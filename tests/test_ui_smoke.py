@@ -35,7 +35,28 @@ class UISmokeTests(unittest.TestCase):
         window.deleteLater()
         self.app.processEvents()
 
-    def test_json_tree_expands_nested_objects_on_demand(self):
+    def test_json_tree_paginates_large_objects_without_dropping_fields(self):
+        tree = JSONTreeWidget()
+        tree.resize(600, 400)
+        tree.show()
+        value = {f"field_{index}": index for index in range(650)}
+        tree.set_json(value)
+        self.app.processEvents()
+
+        root = tree.topLevelItem(0)
+        self.assertEqual(root.childCount(), 301)  # 300 fields + load-more row
+        more = root.child(300)
+        self.assertTrue(more.data(0, JSONTreeWidget.MORE_ROLE))
+        tree._load_more(more, 0)
+        self.app.processEvents()
+
+        self.assertEqual(root.childCount(), 351)  # 650 fields + no marker
+        self.assertEqual(root.child(649).text(0), "field_649")
+        tree.close()
+        tree.deleteLater()
+        self.app.processEvents()
+
+    def test_json_xml_tab_switches_to_text_tool(self):
         tree = JSONTreeWidget()
         tree.resize(600, 400)
         tree.show()
@@ -65,8 +86,18 @@ class UISmokeTests(unittest.TestCase):
         tree.deleteLater()
         self.app.processEvents()
 
+    def test_input_editor_accepts_150k_characters(self):
+        window = MainWindow()
+        payload = '{"message":"' + ("x" * 150000) + '"}'
+        window.input_editor.setPlainText(payload)
+        self.app.processEvents()
+        self.assertEqual(len(window.input_editor.toPlainText()), len(payload))
+        window.close()
+        window.deleteLater()
+        self.app.processEvents()
+
     def test_text_conversion_runs_in_worker_thread(self):
-        source = '{"payload":"' + ("x" * 10000) + '"}'
+        source = '{"payload":"' + ("x" * 150000) + '"}'
         worker = TextTaskWorker("format_json", source, "RootModel", "dataclass")
         self.assertIsInstance(worker, QThread)
 
@@ -93,7 +124,7 @@ class UISmokeTests(unittest.TestCase):
 
         self.assertEqual(errors, [])
         self.assertEqual(len(results), 1)
-        self.assertEqual(len(results[0]["input_json"]["payload"]), 10000)
+        self.assertEqual(len(results[0]["input_json"]["payload"]), 150000)
 
 
 if __name__ == "__main__":
