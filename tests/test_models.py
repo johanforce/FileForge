@@ -39,9 +39,10 @@ class ModelGenerationTests(unittest.TestCase):
         self.assertIn('"optional-key": string;', code)
         self.assertIn("orders: Array<Order>;", code)
 
-    def test_requires_root_object(self):
-        with self.assertRaises(ValueError):
-            generate_models([{"id": 1}], "Root", "dataclass")
+    def test_wraps_array_root_in_root_field(self):
+        code = generate_models([{"id": 1}, {"id": 2}], "Root", "dataclass")
+        self.assertIn("root: list[Root]", code)
+        self.assertIn("class Root:", code)
 
 
 if __name__ == "__main__":
