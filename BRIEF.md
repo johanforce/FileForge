@@ -60,15 +60,16 @@ Trình xem JSON:
 - Cả đầu vào và đầu ra JSON có chế độ Văn bản và Cấu trúc.
 - Cấu trúc dùng cây hai cột: tên trường và giá trị.
 - Object/array có thể bung/thu từng cấp.
-- Nạp node con theo yêu cầu; tối đa 300 mục hiển thị mỗi node để giảm tải UI.
+- Nạp node con theo yêu cầu; hiển thị 300 mục mỗi trang. Có thể nạp tiếp các trang sau, không bỏ mất field nào.
 
 ## 4. Hiệu năng và xử lý nền
 
 - Parse/serialize JSON, parse/format XML và sinh model phải chạy trong QThread.
 - Text editor dùng QPlainTextEdit thay vì widget rich-text nặng.
 - Cây JSON lazy-load; không dựng toàn bộ widget con ngay khi parse.
-- Yêu cầu trải nghiệm: xử lý chuỗi JSON khoảng 10.000 ký tự mà không làm cửa sổ đứng hoặc mất phản hồi.
-- Bộ kiểm thử có ca dữ liệu 10.000 ký tự; cần tiếp tục kiểm tra thực tế trên macOS với dữ liệu lồng nhau lớn.
+- Ô nhập không đặt giới hạn số ký tự cố định; dùng QPlainTextEdit với chế độ không tự ngắt dòng để giảm tải cho nội dung một dòng rất dài.
+- Parse/format/chuyển đổi chạy trong QThread để không chiếm UI thread.
+- Bộ kiểm thử xác nhận nhập và xử lý JSON có chuỗi 150.000 ký tự; đây là mức kiểm thử tối thiểu đã xác nhận, không phải giới hạn tối đa.
 
 ## 5. Xử lý lỗi và tính toàn vẹn
 
@@ -91,4 +92,4 @@ Trình xem JSON:
 - Convert PDF/Word/Excel.
 - Đồng bộ cloud hoặc upload file.
 - JSON Schema validation và OpenAPI generation.
-- Benchmark cam kết cho dữ liệu lớn hơn 10.000 ký tự; hiệu năng còn phụ thuộc độ sâu và số lượng node.
+- Benchmark dung lượng cực lớn ngoài mốc kiểm thử 150.000 ký tự; hiệu năng thực tế còn phụ thuộc cấu trúc lồng nhau, số lượng khóa, bộ nhớ và máy người dùng.
