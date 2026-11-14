@@ -1,6 +1,6 @@
 # FileForge
 
-Ứng dụng desktop gọn nhẹ để gom tệp, nén/giải nén ZIP và chuyển đổi ảnh. Xây dựng bằng Python và PySide6.
+Ứng dụng desktop gọn nhẹ để gom tệp, nén/giải nén ZIP, chuyển đổi ảnh và xử lý JSON/XML. Xây dựng bằng Python và PySide6.
 
 ## Tính năng
 
@@ -21,9 +21,27 @@
 - Đầu ra: JPG, PNG và WEBP.
 - Đầu vào: PNG, JPG/JPEG, WEBP, BMP và TIFF.
 - Chọn chất lượng JPG/WEBP từ 50% đến 100%.
-- Tự xử lý ảnh có kênh trong suốt khi xuất JPG bằng nền trắng.
+- Xử lý ảnh trong suốt khi xuất JPG bằng nền trắng.
 - Giữ hướng ảnh theo EXIF và hồ sơ màu ICC khi có thể.
 - Tự đổi tên khi tệp đầu ra đã tồn tại; bỏ qua ảnh lỗi và tiếp tục batch.
+
+### Công cụ JSON / XML
+- JSON → Chuỗi: phân tích JSON và xuất lại dạng compact, không thừa khoảng trắng.
+- Chuỗi → JSON: phân tích JSON text và hiển thị lại dạng dễ đọc.
+- Định dạng JSON: chuẩn hóa thụt lề 2 spaces, giữ Unicode.
+- XML → Chuỗi: kiểm tra XML hợp lệ và xuất dạng compact.
+- Chuỗi → XML: chấp nhận XML thô hoặc XML nằm trong một JSON string, sau đó định dạng dễ đọc.
+- JSON → Model: sinh Python dataclass, Pydantic v2 hoặc TypeScript interface.
+- Hỗ trợ object lồng nhau, mảng, trường có thể thiếu và giá trị null.
+- JSON gốc dạng mảng/scalar được bọc trong trường root.
+
+### Hiển thị cấu trúc và hiệu năng
+- Hai vùng đầu vào/đầu ra, có thể chuyển giữa văn bản và cây JSON.
+- Object và array có thể bung/thu theo từng cấp.
+- Cây JSON nạp con theo yêu cầu, giới hạn 300 mục hiển thị cho mỗi nút để tránh tạo hàng nghìn widget cùng lúc.
+- Parse, format, chuyển đổi và sinh model chạy trong QThread; giao diện không phải chờ xử lý đồng bộ.
+- Có kiểm thử với chuỗi JSON 10.000 ký tự.
+- Lỗi cú pháp JSON/XML được báo riêng, không làm ứng dụng thoát.
 
 ## Yêu cầu
 
@@ -97,6 +115,8 @@ python -m unittest discover -s tests -v
 - fileforge/archive.py — bộ xử lý tạo tệp ZIP.
 - fileforge/extraction.py — giải nén ZIP có kiểm tra đường dẫn.
 - fileforge/images.py — chuyển đổi ảnh bằng Pillow.
+- fileforge/text_utils.py — chuyển đổi/định dạng JSON và XML.
+- fileforge/models.py — sinh model từ JSON.
 - tests/ — kiểm thử tự động.
 
 ## Quyền riêng tư
