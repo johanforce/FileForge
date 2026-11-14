@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 jobs:
-  archive-tests:
+  tests:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -16,7 +16,9 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Run archive unit tests
+      - name: Install test dependency
+        run: python -m pip install "Pillow>=10.0,<13.0"
+      - name: Run unit tests
         run: python -m unittest discover -s tests -v
       - name: Compile Python sources
         run: python -m compileall -q main.py fileforge tests
