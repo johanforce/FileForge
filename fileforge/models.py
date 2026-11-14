@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import keyword
+import json
 import re
 from dataclasses import dataclass, field
 from typing import Any
@@ -263,7 +264,7 @@ def _render_typescript(schemas: list[ObjectSchema]) -> str:
             property_name = (
                 item.json_name
                 if re.fullmatch(r"[A-Za-z_$][A-Za-z0-9_$]*", item.json_name)
-                else repr(item.json_name)
+                else json.dumps(item.json_name, ensure_ascii=False)
             )
             optional = "?" if item.optional else ""
             type_name = _to_typescript_type(item.type_name)
