@@ -100,6 +100,7 @@ class _ModelBuilder:
                     keys.append(key)
 
         pending: list[FieldSchema] = []
+        used_field_names: set[str] = set()
         for key in keys:
             values = [obj[key] for obj in objects if key in obj]
             optional = len(values) < len(objects)
@@ -113,10 +114,19 @@ class _ModelBuilder:
             )
             if nullable:
                 type_name = self._union([type_name, "None"])
+
+            python_name = _identifier(key)
+            base_name = python_name
+            suffix = 2
+            while python_name in used_field_names:
+                python_name = f"{base_name}_{suffix}"
+                suffix += 1
+            used_field_names.add(python_name)
+
             pending.append(
                 FieldSchema(
                     json_name=key,
-                    python_name=_identifier(key),
+                    python_name=python_name,
                     type_name=type_name,
                     optional=optional,
                     nullable=nullable,
@@ -145,11 +155,49 @@ class _ModelBuilder:
         parent_name: str,
         field_name: str,
     ) -> str:
-        inferred = [
-            self._infer_value(value, path, parent_name, field_name)
-            for value in values
-        ]
-        return self._union(inferred) if inferred else "Any"
+        if not values:
+            return "Any"
+
+        inferred: list[str] = []
+        object_values = [value for value in values if isinstance(value, dict)]
+        if object_values:
+            inferred.append(
+                self._build_object(path, _pascal(field_name), object_values)
+            )
+
+        list_values = [value for value in values if isinstance(value, list)]
+        if list_values:
+            all_items = [item for group in list_values for item in group]
+            object_items = [item for item in all_items if isinstance(item, dict)]
+            item_types: list[str] = []
+
+            if object_items:
+                item_types.append(
+                    self._build_object(
+                        path + ("[]",),
+                        _pascal(_singular(field_name)),
+                        object_items,
+                    )
+                )
+
+            for item in all_items:
+                if not isinstance(item, dict):
+                    item_types.append(
+                        self._infer_value(
+                            item, path + ("[]",), parent_name, field_name
+                        )
+                    )
+
+            element_type = self._union(item_types) if item_types else "Any"
+            inferred.append(f"list[{element_type}]")
+
+        for value in values:
+            if not isinstance(value, (dict, list)):
+                inferred.append(
+                    self._infer_value(value, path, parent_name, field_name)
+                )
+
+        return self._union(inferred)
 
     def _infer_value(
         self,
