@@ -24,6 +24,11 @@ from PySide6.QtWidgets import (
     QTabWidget,
     QTableWidget,
     QTableWidgetItem,
+    QTreeWidget,
+    QTreeWidgetItem,
+    QPlainTextEdit,
+    QLineEdit,
+    QSplitter,
     QVBoxLayout,
     QWidget,
 )
@@ -31,6 +36,7 @@ from PySide6.QtWidgets import (
 from fileforge.archive import create_zip
 from fileforge.extraction import extract_archives
 from fileforge.images import SUPPORTED_IMAGE_EXTENSIONS, convert_images
+from fileforge.text_utils import process_text
 
 
 STYLE = """
@@ -154,6 +160,19 @@ QTableWidget::item {
     padding: 7px 10px;
     border: 0;
 }
+QPlainTextEdit, QTreeWidget {
+    background: #141a24;
+    border: 1px solid #293244;
+    border-radius: 10px;
+    padding: 8px;
+    selection-background-color: #34345a;
+    selection-color: #ffffff;
+    font-family: 'SF Mono', 'Menlo', monospace;
+    font-size: 12px;
+}
+QTreeWidget::item {
+    padding: 5px 4px;
+}
 QProgressBar {
     background: #252e3e;
     border: 0;
@@ -250,6 +269,120 @@ class TaskWorker(QThread):
             self.failed.emit(str(exc))
 
 
+class TextTaskWorker(QThread):
+    completed = Signal(object)
+    failed = Signal(str)
+
+    def __init__(
+        self,
+        operation: str,
+        text: str,
+        class_name: str,
+        model_target: str,
+    ):
+        super().__init__()
+        self.operation = operation
+        self.text = text
+        self.class_name = class_name
+        self.model_target = model_target
+
+    def run(self):
+        try:
+            result = process_text(
+                self.operation,
+                self.text,
+                self.class_name,
+                self.model_target,
+            )
+            self.completed.emit(result)
+        except Exception as exc:
+            self.failed.emit(str(exc))
+
+
+class JSONTreeWidget(QTreeWidget):
+    """Lazy JSON tree: nested objects are expanded only when the user opens them."""
+
+    MAX_CHILDREN_PER_NODE = 300
+    LAZY_ROLE = Qt.ItemDataRole.UserRole + 1
+
+    def __init__(self):
+        super().__init__()
+        self.setColumnCount(2)
+        self.setHeaderLabels(["TRƯỜNG", "GIÁ TRỊ"])
+        self.setColumnWidth(0, 180)
+        self.setUniformRowHeights(True)
+        self.setAlternatingRowColors(True)
+        self.itemExpanded.connect(self._populate_item)
+
+    @staticmethod
+    def _is_container(value) -> bool:
+        return isinstance(value, (dict, list))
+
+    @staticmethod
+    def _preview(value) -> str:
+        if isinstance(value, dict):
+            return f"{{ {len(value)} mục }}"
+        if isinstance(value, list):
+            return f"[ {len(value)} mục ]"
+        if value is None:
+            return "null"
+        if value is True:
+            return "true"
+        if value is False:
+            return "false"
+        text = str(value)
+        if isinstance(value, str):
+            text = '"' + text + '"'
+        if len(text) > 100:
+            text = text[:97] + "…"
+        return text
+
+    def _add_lazy_marker(self, item: QTreeWidgetItem):
+        marker = QTreeWidgetItem(["", ""])
+        marker.setData(0, self.LAZY_ROLE, True)
+        item.addChild(marker)
+
+    def set_json(self, value):
+        self.clear()
+        root = QTreeWidgetItem(["$", self._preview(value)])
+        root.setData(0, Qt.ItemDataRole.UserRole, value)
+        self.addTopLevelItem(root)
+        if self._is_container(value) and value:
+            self._add_lazy_marker(root)
+            root.setExpanded(True)
+        self.expandToDepth(0)
+
+    def _populate_item(self, item: QTreeWidgetItem):
+        if not item.data(0, self.LAZY_ROLE):
+            return
+
+        value = item.data(0, Qt.ItemDataRole.UserRole)
+        item.setData(0, self.LAZY_ROLE, False)
+        while item.childCount():
+            item.takeChild(0)
+
+        if isinstance(value, dict):
+            values = list(value.items())
+        elif isinstance(value, list):
+            values = [(f"[{index}]", child) for index, child in enumerate(value)]
+        else:
+            return
+
+        shown = values[: self.MAX_CHILDREN_PER_NODE]
+        for key, child_value in shown:
+            child = QTreeWidgetItem([str(key), self._preview(child_value)])
+            child.setData(0, Qt.ItemDataRole.UserRole, child_value)
+            if self._is_container(child_value) and child_value:
+                self._add_lazy_marker(child)
+            item.addChild(child)
+
+        remaining = len(values) - len(shown)
+        if remaining:
+            more = QTreeWidgetItem(["…", f"Còn {remaining} mục"])
+            more.setDisabled(True)
+            item.addChild(more)
+
+
 class DropArea(QFrame):
     files_dropped = Signal(list)
 
@@ -321,6 +454,8 @@ class MainWindow(QMainWindow):
         self.busy = False
         self.icon_provider = QFileIconProvider()
         self.mode = "zip"
+        self.text_worker: TextTaskWorker | None = None
+        self.text_busy = False
 
         root = QWidget()
         self.setCentralWidget(root)
@@ -346,6 +481,7 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(QWidget(), "Nén ZIP")
         self.tabs.addTab(QWidget(), "Giải nén")
         self.tabs.addTab(QWidget(), "Chuyển ảnh")
+        self.tabs.addTab(QWidget(), "JSON / XML")
         self.tabs.currentChanged.connect(self.on_mode_changed)
         outer.addWidget(self.tabs)
 
@@ -408,6 +544,7 @@ class MainWindow(QMainWindow):
         self.queue_stack.addWidget(self.table)
         queue_layout.addWidget(self.queue_stack, 1)
         outer.addWidget(queue_panel, 1)
+        self.queue_panel = queue_panel
 
         action_panel = QFrame()
         action_panel.setObjectName("Panel")
@@ -484,6 +621,11 @@ class MainWindow(QMainWindow):
         self.progress_area.hide()
 
         outer.addWidget(action_panel)
+        self.action_panel = action_panel
+
+        self.text_panel = self.build_text_panel()
+        outer.addWidget(self.text_panel, 1)
+        self.text_panel.hide()
 
         self.on_mode_changed(0)
         self.refresh_queue()
