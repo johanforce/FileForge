@@ -3,7 +3,7 @@ import unittest
 import zipfile
 from pathlib import Path
 
-from fileforge.archive import collect_items, create_zip
+from fileforge.archive import create_zip
 
 
 class ArchiveTests(unittest.TestCase):
@@ -45,8 +45,9 @@ class ArchiveTests(unittest.TestCase):
             source.write_text("a", encoding="utf-8")
             target = root / "out.zip"
             target.write_bytes(b"previous")
-            with self.assertRaises(ValueError):
-                create_zip([source], source, "Balanced")
+            missing = root / "missing.txt"
+            with self.assertRaises(FileNotFoundError):
+                create_zip([missing], target, "Balanced")
             self.assertEqual(target.read_bytes(), b"previous")
 
 
