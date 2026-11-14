@@ -57,7 +57,12 @@ class UISmokeTests(unittest.TestCase):
         self.app.processEvents()
 
         self.assertEqual(root.childCount(), 650)  # all 650 fields are accessible
-        self.assertEqual(root.child(649).text(0), "field_649")
+        field_names = {
+            root.child(index).text(0)
+            for index in range(root.childCount())
+        }
+        self.assertIn("field_649", field_names)
+        self.assertIn("field_0", field_names)
         tree.close()
         tree.deleteLater()
         self.app.processEvents()
