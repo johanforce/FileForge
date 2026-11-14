@@ -24,6 +24,36 @@ File conversion is planned, but is not implemented in this version. The Converte
 
 ## Run locally
 
+### macOS
+
+Use Python 3.10 or newer (Python 3.12 is recommended). Avoid the Python 3.9 interpreter bundled with older Apple Command Line Tools.
+
+With Homebrew:
+
+```bash
+brew install python@3.12
+
+git clone https://github.com/johanforce/FileForge.git
+cd FileForge
+
+# Recreate the virtual environment if it was made with an older Python:
+rm -rf .venv
+python3.12 -m venv .venv
+source .venv/bin/activate
+
+python -m pip install --upgrade pip
+# --no-compile avoids pip trying to byte-compile Qt's Jinja .tmpl.py files.
+python -m pip install --no-compile -r requirements.txt
+python main.py
+```
+
+If your shell cannot find `python3.12` after installing Homebrew Python, run:
+```bash
+$(brew --prefix python@3.12)/bin/python3.12 -m venv .venv
+```
+
+### Windows / Linux
+
 ```bash
 python -m venv .venv
 # Windows:
