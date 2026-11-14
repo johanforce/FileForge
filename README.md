@@ -38,9 +38,9 @@
 ### Hiển thị cấu trúc và hiệu năng
 - Hai vùng đầu vào/đầu ra, có thể chuyển giữa văn bản và cây JSON.
 - Object và array có thể bung/thu theo từng cấp.
-- Cây JSON nạp con theo yêu cầu, giới hạn 300 mục hiển thị cho mỗi nút để tránh tạo hàng nghìn widget cùng lúc.
+- Cây JSON nạp con theo yêu cầu, hiển thị 300 mục mỗi trang và có thể nạp tiếp; không bỏ mất field trong JSON lớn.
 - Parse, format, chuyển đổi và sinh model chạy trong QThread; giao diện không phải chờ xử lý đồng bộ.
-- Có kiểm thử với chuỗi JSON 10.000 ký tự.
+- Ô nhập không đặt giới hạn ký tự cố định; đã kiểm thử nhập và xử lý JSON có chuỗi 150.000 ký tự.
 - Lỗi cú pháp JSON/XML được báo riêng, không làm ứng dụng thoát.
 
 ## Yêu cầu
