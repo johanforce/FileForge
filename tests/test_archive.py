@@ -29,7 +29,7 @@ class ArchiveTests(unittest.TestCase):
             folder = Path(tmp) / "empty"
             folder.mkdir()
             with self.assertRaises(ValueError):
-                collect_items([folder])
+                create_zip([folder], Path(tmp) / "empty.zip")
 
     def test_invalid_compression_is_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
