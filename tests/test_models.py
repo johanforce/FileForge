@@ -25,6 +25,7 @@ class ModelGenerationTests(unittest.TestCase):
         self.assertIn("orders: list[Order]", code)
         self.assertIn("note: str | None = None", code)
         self.assertIn("optional_key: str", code)
+        compile(code, "<generated-model>", "exec")
 
     def test_generates_pydantic_models(self):
         code = generate_models(SAMPLE, "Customer", "pydantic")
