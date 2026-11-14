@@ -338,8 +338,8 @@ class JSONTreeWidget(QTreeWidget):
         return text
 
     def _add_lazy_marker(self, item: QTreeWidgetItem):
+        item.setData(0, self.LAZY_ROLE, True)
         marker = QTreeWidgetItem(["", ""])
-        marker.setData(0, self.LAZY_ROLE, True)
         item.addChild(marker)
 
     def set_json(self, value):
