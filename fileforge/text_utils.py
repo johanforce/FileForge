@@ -68,10 +68,12 @@ def process_text(
         elif operation == "string_to_json":
             result["output"] = json.dumps(data, ensure_ascii=False, indent=2)
             result["output_json"] = data
+            result["output_json_valid"] = True
             result["output_kind"] = "json"
         elif operation == "format_json":
             result["output"] = json.dumps(data, ensure_ascii=False, indent=2)
             result["output_json"] = data
+            result["output_json_valid"] = True
             result["output_kind"] = "json"
         else:
             result["output"] = generate_models(data, class_name, model_target)
