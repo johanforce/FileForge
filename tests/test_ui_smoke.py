@@ -1,5 +1,4 @@
 import os
-import threading
 import unittest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -14,6 +13,7 @@ class UISmokeTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.app = QApplication.instance() or QApplication([])
+        cls.app.setQuitOnLastWindowClosed(False)
 
     def test_json_xml_tab_switches_to_text_tool(self):
         window = MainWindow()
@@ -32,6 +32,8 @@ class UISmokeTests(unittest.TestCase):
         self.assertEqual(window.mode, "zip")
         self.assertTrue(window.drop_area.isVisible())
         window.close()
+        window.deleteLater()
+        self.app.processEvents()
 
     def test_json_tree_expands_nested_objects_on_demand(self):
         tree = JSONTreeWidget()
@@ -45,13 +47,23 @@ class UISmokeTests(unittest.TestCase):
 
         root = tree.topLevelItem(0)
         self.assertEqual(root.childCount(), 2)
-        profile = root.child(0)
+        profile = next(
+            root.child(index)
+            for index in range(root.childCount())
+            if root.child(index).text(0) == "profile"
+        )
         self.assertEqual(profile.childCount(), 1)  # lazy placeholder
         profile.setExpanded(True)
         self.app.processEvents()
         self.assertEqual(profile.childCount(), 2)
-        self.assertEqual(profile.child(0).text(0), "name")
+        child_names = {
+            profile.child(index).text(0)
+            for index in range(profile.childCount())
+        }
+        self.assertEqual(child_names, {"name", "active"})
         tree.close()
+        tree.deleteLater()
+        self.app.processEvents()
 
     def test_text_conversion_runs_in_worker_thread(self):
         source = '{"payload":"' + ("x" * 10000) + '"}'
@@ -76,6 +88,8 @@ class UISmokeTests(unittest.TestCase):
         QTimer.singleShot(5000, loop.quit)
         loop.exec()
         worker.wait()
+        worker.deleteLater()
+        self.app.processEvents()
 
         self.assertEqual(errors, [])
         self.assertEqual(len(results), 1)
