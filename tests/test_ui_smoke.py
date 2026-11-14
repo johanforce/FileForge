@@ -56,7 +56,7 @@ class UISmokeTests(unittest.TestCase):
         tree.deleteLater()
         self.app.processEvents()
 
-    def test_json_xml_tab_switches_to_text_tool(self):
+    def test_json_tree_expands_nested_objects_on_demand(self):
         tree = JSONTreeWidget()
         tree.resize(600, 400)
         tree.show()
