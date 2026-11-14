@@ -82,8 +82,8 @@ Trình xem JSON:
 - Nén ZIP: đã có.
 - Giải nén ZIP: đã có.
 - Chuyển đổi ảnh: đã có.
-- JSON/XML conversions: đang được triển khai trong tab JSON / XML.
-- JSON → Model: đang được triển khai, hỗ trợ dataclass, Pydantic v2 và TypeScript.
+- JSON/XML conversions: đã triển khai trong tab JSON / XML.
+- JSON → Model: đã triển khai, hỗ trợ dataclass, Pydantic v2 và TypeScript.
 - Đóng gói .app/.dmg cho macOS: chưa triển khai.
 
 ## 7. Ngoài phạm vi hiện tại
