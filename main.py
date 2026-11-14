@@ -19,7 +19,9 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QProgressBar,
     QPushButton,
+    QSlider,
     QStackedWidget,
+    QTabWidget,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -27,6 +29,8 @@ from PySide6.QtWidgets import (
 )
 
 from fileforge.archive import create_zip
+from fileforge.extraction import extract_archives
+from fileforge.images import SUPPORTED_IMAGE_EXTENSIONS, convert_images
 
 
 STYLE = """
@@ -98,7 +102,7 @@ QComboBox {
     border: 1px solid #354158;
     border-radius: 9px;
     padding: 9px 12px;
-    min-width: 150px;
+    min-width: 125px;
     color: #edf2fa;
 }
 QComboBox:hover {
@@ -108,6 +112,25 @@ QComboBox QAbstractItemView {
     background: #202838;
     color: #edf2fa;
     selection-background-color: #5149a8;
+}
+QTabWidget::pane {
+    border: 0;
+    border-bottom: 1px solid #293244;
+}
+QTabBar::tab {
+    background: transparent;
+    color: #929db0;
+    padding: 10px 18px;
+    margin-right: 5px;
+    border-bottom: 2px solid transparent;
+    font-weight: 650;
+}
+QTabBar::tab:selected {
+    color: #ffffff;
+    border-bottom: 2px solid #8178f5;
+}
+QTabBar::tab:hover {
+    color: #ffffff;
 }
 QTableWidget {
     background: #141a24;
@@ -142,6 +165,17 @@ QProgressBar::chunk {
     background: #8178f5;
     border-radius: 5px;
 }
+QSlider::groove:horizontal {
+    background: #252e3e;
+    height: 5px;
+    border-radius: 2px;
+}
+QSlider::handle:horizontal {
+    background: #8178f5;
+    width: 14px;
+    margin: -5px 0;
+    border-radius: 7px;
+}
 """
 
 
@@ -150,28 +184,68 @@ COMPRESSION_OPTIONS = {
     "Cân bằng": "Balanced",
     "Nén tối đa": "Best",
 }
+IMAGE_FILTER = "Ảnh (*.png *.jpg *.jpeg *.webp *.bmp *.tif *.tiff)"
+ZIP_FILTER = "Tệp ZIP (*.zip)"
 
 
-class ArchiveWorker(QThread):
+class TaskWorker(QThread):
     progress = Signal(int, int, str)
-    succeeded = Signal(str)
+    completed = Signal(object)
     failed = Signal(str)
 
-    def __init__(self, paths: list[str], destination: str, compression: str):
+    def __init__(
+        self,
+        mode: str,
+        paths: list[str],
+        destination: str,
+        compression: str = "Balanced",
+        output_format: str = "JPG",
+        quality: int = 90,
+    ):
         super().__init__()
+        self.mode = mode
         self.paths = paths
         self.destination = destination
         self.compression = compression
+        self.output_format = output_format
+        self.quality = quality
 
     def run(self):
         try:
-            result = create_zip(
-                self.paths,
-                self.destination,
-                self.compression,
-                lambda done, total, name: self.progress.emit(done, total, name),
-            )
-            self.succeeded.emit(str(result))
+            if self.mode == "zip":
+                result = create_zip(
+                    self.paths,
+                    self.destination,
+                    self.compression,
+                    lambda done, total, name: self.progress.emit(done, total, name),
+                )
+                self.completed.emit({"mode": "zip", "path": str(result)})
+            elif self.mode == "extract":
+                outputs, errors = extract_archives(
+                    self.paths,
+                    self.destination,
+                    lambda done, total, name: self.progress.emit(done, total, name),
+                )
+                self.completed.emit({
+                    "mode": "extract",
+                    "outputs": [str(path) for path in outputs],
+                    "errors": errors,
+                })
+            elif self.mode == "image":
+                outputs, errors = convert_images(
+                    self.paths,
+                    self.destination,
+                    self.output_format,
+                    self.quality,
+                    lambda done, total, name: self.progress.emit(done, total, name),
+                )
+                self.completed.emit({
+                    "mode": "image",
+                    "outputs": [str(path) for path in outputs],
+                    "errors": errors,
+                })
+            else:
+                raise ValueError("Tác vụ không hợp lệ.")
         except Exception as exc:
             self.failed.emit(str(exc))
 
@@ -183,36 +257,44 @@ class DropArea(QFrame):
         super().__init__()
         self.setAcceptDrops(True)
         self.setObjectName("DropArea")
-        self.setMinimumHeight(102)
+        self.setMinimumHeight(96)
         self.setProperty("dragActive", False)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(16, 14, 16, 14)
+        layout.setContentsMargins(16, 12, 16, 12)
         layout.setSpacing(5)
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        title = QLabel("Kéo thả tệp hoặc thư mục vào đây")
-        title.setObjectName("DropTitle")
-        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.title = QLabel()
+        self.title.setObjectName("DropTitle")
+        self.title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.hint = QLabel()
+        self.hint.setObjectName("Muted")
+        self.hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        hint = QLabel("Thư mục sẽ được thêm cùng toàn bộ tệp bên trong")
-        hint.setObjectName("Muted")
-        hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self.title)
+        layout.addWidget(self.hint)
+        self.set_instruction(
+            "Kéo thả tệp hoặc thư mục vào đây",
+            "Có thể chọn nhiều tệp cùng lúc",
+        )
 
-        layout.addWidget(title)
-        layout.addWidget(hint)
+    def set_instruction(self, title: str, hint: str):
+        self.title.setText(title)
+        self.hint.setText(hint)
+
+    def _set_drag_active(self, active: bool):
+        self.setProperty("dragActive", active)
+        self.style().unpolish(self)
+        self.style().polish(self)
 
     def dragEnterEvent(self, event: QDragEnterEvent):
         if event.mimeData().hasUrls():
-            self.setProperty("dragActive", True)
-            self.style().unpolish(self)
-            self.style().polish(self)
+            self._set_drag_active(True)
             event.acceptProposedAction()
 
     def dragLeaveEvent(self, event):
-        self.setProperty("dragActive", False)
-        self.style().unpolish(self)
-        self.style().polish(self)
+        self._set_drag_active(False)
         super().dragLeaveEvent(event)
 
     def dropEvent(self, event: QDropEvent):
@@ -221,9 +303,7 @@ class DropArea(QFrame):
             for url in event.mimeData().urls()
             if url.isLocalFile()
         ]
-        self.setProperty("dragActive", False)
-        self.style().unpolish(self)
-        self.style().polish(self)
+        self._set_drag_active(False)
         if paths:
             self.files_dropped.emit(paths)
             event.acceptProposedAction()
@@ -233,46 +313,46 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("FileForge")
-        self.resize(1040, 720)
-        self.setMinimumSize(860, 600)
+        self.resize(1040, 740)
+        self.setMinimumSize(860, 620)
 
         self.paths: list[str] = []
-        self.worker: ArchiveWorker | None = None
+        self.worker: TaskWorker | None = None
         self.busy = False
         self.icon_provider = QFileIconProvider()
+        self.mode = "zip"
 
         root = QWidget()
         self.setCentralWidget(root)
         outer = QVBoxLayout(root)
         outer.setContentsMargins(26, 22, 26, 22)
-        outer.setSpacing(16)
+        outer.setSpacing(14)
 
-        # Header: brand and the two primary ways to add files.
         header = QHBoxLayout()
-        header.setSpacing(9)
-
         brand = QLabel("✦  FileForge")
         brand.setObjectName("Brand")
         header.addWidget(brand)
         header.addStretch()
 
         self.add_files_btn = QPushButton("＋  Thêm tệp")
-        self.add_files_btn.setToolTip("Chọn một hoặc nhiều tệp để nén")
         self.add_files_btn.clicked.connect(self.choose_files)
-
         self.add_folder_btn = QPushButton("＋  Thêm thư mục")
-        self.add_folder_btn.setToolTip("Thêm toàn bộ tệp trong một thư mục")
         self.add_folder_btn.clicked.connect(self.choose_folder)
-
         header.addWidget(self.add_files_btn)
         header.addWidget(self.add_folder_btn)
         outer.addLayout(header)
+
+        self.tabs = QTabWidget()
+        self.tabs.addTab(QWidget(), "Nén ZIP")
+        self.tabs.addTab(QWidget(), "Giải nén")
+        self.tabs.addTab(QWidget(), "Chuyển ảnh")
+        self.tabs.currentChanged.connect(self.on_mode_changed)
+        outer.addWidget(self.tabs)
 
         self.drop_area = DropArea()
         self.drop_area.files_dropped.connect(self.add_paths)
         outer.addWidget(self.drop_area)
 
-        # File queue: keep the visible information to filename and size.
         queue_panel = QFrame()
         queue_panel.setObjectName("Panel")
         queue_layout = QVBoxLayout(queue_panel)
@@ -280,8 +360,6 @@ class MainWindow(QMainWindow):
         queue_layout.setSpacing(11)
 
         queue_header = QHBoxLayout()
-        queue_header.setSpacing(10)
-
         section = QLabel("Tệp đã chọn")
         section.setObjectName("Section")
         queue_header.addWidget(section)
@@ -292,25 +370,22 @@ class MainWindow(QMainWindow):
         queue_header.addStretch()
 
         self.remove_btn = QPushButton("Xóa mục chọn")
-        self.remove_btn.setToolTip("Xóa các tệp đang chọn khỏi danh sách")
         self.remove_btn.clicked.connect(self.remove_selected)
         queue_header.addWidget(self.remove_btn)
 
         self.clear_btn = QPushButton("Xóa tất cả")
         self.clear_btn.clicked.connect(self.clear_queue)
         queue_header.addWidget(self.clear_btn)
-
         queue_layout.addLayout(queue_header)
 
         self.queue_stack = QStackedWidget()
-
         empty_state = QWidget()
         empty_layout = QVBoxLayout(empty_state)
         empty_layout.setContentsMargins(8, 24, 8, 24)
         empty_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        empty_label = QLabel("Danh sách đang trống")
-        empty_label.setObjectName("Muted")
-        empty_layout.addWidget(empty_label, alignment=Qt.AlignmentFlag.AlignCenter)
+        self.empty_label = QLabel("Danh sách đang trống")
+        self.empty_label.setObjectName("Muted")
+        empty_layout.addWidget(self.empty_label, alignment=Qt.AlignmentFlag.AlignCenter)
         self.queue_stack.addWidget(empty_state)
 
         self.table = QTableWidget(0, 2)
@@ -321,12 +396,8 @@ class MainWindow(QMainWindow):
         self.table.horizontalHeader().setSectionResizeMode(
             1, QHeaderView.ResizeMode.ResizeToContents
         )
-        self.table.setSelectionBehavior(
-            QAbstractItemView.SelectionBehavior.SelectRows
-        )
-        self.table.setSelectionMode(
-            QAbstractItemView.SelectionMode.ExtendedSelection
-        )
+        self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.verticalHeader().setVisible(False)
         self.table.verticalHeader().setDefaultSectionSize(48)
@@ -335,11 +406,9 @@ class MainWindow(QMainWindow):
         self.table.setMinimumHeight(190)
         self.table.itemSelectionChanged.connect(self.update_controls)
         self.queue_stack.addWidget(self.table)
-
         queue_layout.addWidget(self.queue_stack, 1)
         outer.addWidget(queue_panel, 1)
 
-        # Primary action strip.
         action_panel = QFrame()
         action_panel.setObjectName("Panel")
         action_layout = QVBoxLayout(action_panel)
@@ -347,41 +416,68 @@ class MainWindow(QMainWindow):
         action_layout.setSpacing(10)
 
         controls = QHBoxLayout()
-        controls.setSpacing(12)
+        controls.setSpacing(10)
 
-        compression_label = QLabel("Mức nén")
-        compression_label.setObjectName("Muted")
-        controls.addWidget(compression_label)
+        self.compression_label = QLabel("Mức nén")
+        self.compression_label.setObjectName("Muted")
+        controls.addWidget(self.compression_label)
 
         self.compression = QComboBox()
         self.compression.addItems(list(COMPRESSION_OPTIONS.keys()))
         self.compression.setCurrentText("Cân bằng")
-        self.compression.setToolTip(
-            "Nhanh nhất: ưu tiên tốc độ · Nén tối đa: ưu tiên dung lượng nhỏ"
-        )
         controls.addWidget(self.compression)
+
+        self.extract_hint = QLabel("Mỗi tệp ZIP sẽ được giải nén vào một thư mục riêng")
+        self.extract_hint.setObjectName("Muted")
+        controls.addWidget(self.extract_hint)
+
+        self.format_label = QLabel("Định dạng")
+        self.format_label.setObjectName("Muted")
+        controls.addWidget(self.format_label)
+
+        self.format_combo = QComboBox()
+        self.format_combo.addItems(["JPG", "PNG", "WEBP"])
+        self.format_combo.setCurrentText("JPG")
+        self.format_combo.currentTextChanged.connect(self.update_quality_state)
+        controls.addWidget(self.format_combo)
+
+        self.quality_label = QLabel("Chất lượng")
+        self.quality_label.setObjectName("Muted")
+        controls.addWidget(self.quality_label)
+
+        self.quality_slider = QSlider(Qt.Orientation.Horizontal)
+        self.quality_slider.setRange(50, 100)
+        self.quality_slider.setValue(90)
+        self.quality_slider.setFixedWidth(105)
+        self.quality_slider.valueChanged.connect(
+            lambda value: self.quality_value.setText(f"{value}%")
+        )
+        controls.addWidget(self.quality_slider)
+
+        self.quality_value = QLabel("90%")
+        self.quality_value.setMinimumWidth(34)
+        self.quality_value.setObjectName("Muted")
+        controls.addWidget(self.quality_value)
+
         controls.addStretch()
 
-        self.zip_button = QPushButton("Tạo tệp ZIP  →")
-        self.zip_button.setObjectName("Primary")
-        self.zip_button.setMinimumWidth(180)
-        self.zip_button.clicked.connect(self.create_archive)
-        controls.addWidget(self.zip_button)
-
+        self.action_button = QPushButton("Tạo tệp ZIP  →")
+        self.action_button.setObjectName("Primary")
+        self.action_button.setMinimumWidth(185)
+        self.action_button.clicked.connect(self.run_action)
+        controls.addWidget(self.action_button)
         action_layout.addLayout(controls)
 
         self.progress_area = QWidget()
         progress_layout = QVBoxLayout(self.progress_area)
         progress_layout.setContentsMargins(0, 2, 0, 0)
         progress_layout.setSpacing(5)
-
         self.progress_text = QLabel("Đang chuẩn bị…")
         self.progress_text.setObjectName("Muted")
         self.progress = QProgressBar()
         self.progress.setRange(0, 100)
         self.progress.setValue(0)
         self.progress.setTextVisible(False)
-
         progress_layout.addWidget(self.progress_text)
         progress_layout.addWidget(self.progress)
         action_layout.addWidget(self.progress_area)
@@ -389,6 +485,7 @@ class MainWindow(QMainWindow):
 
         outer.addWidget(action_panel)
 
+        self.on_mode_changed(0)
         self.refresh_queue()
 
     @staticmethod
@@ -396,11 +493,81 @@ class MainWindow(QMainWindow):
         amount = float(size)
         for unit in ("B", "KB", "MB", "GB", "TB"):
             if amount < 1024 or unit == "TB":
-                if unit == "B":
-                    return f"{amount:.0f} {unit}"
-                return f"{amount:.1f} {unit}"
+                return f"{amount:.0f} {unit}" if unit == "B" else f"{amount:.1f} {unit}"
             amount /= 1024
         return f"{amount:.1f} TB"
+
+    def current_paths(self) -> list[str]:
+        if self.mode == "extract":
+            return [path for path in self.paths if Path(path).suffix.lower() == ".zip"]
+        if self.mode == "image":
+            return [
+                path for path in self.paths
+                if Path(path).suffix.lower() in SUPPORTED_IMAGE_EXTENSIONS
+            ]
+        return list(self.paths)
+
+    def on_mode_changed(self, index: int):
+        self.mode = ("zip", "extract", "image")[index]
+
+        if self.mode == "zip":
+            self.add_files_btn.setText("＋  Thêm tệp")
+            self.drop_area.set_instruction(
+                "Kéo thả tệp hoặc thư mục vào đây",
+                "Thêm nhiều tệp để gom vào một tệp ZIP",
+            )
+            self.compression_label.show()
+            self.compression.show()
+            self.extract_hint.hide()
+            self.format_label.hide()
+            self.format_combo.hide()
+            self.quality_label.hide()
+            self.quality_slider.hide()
+            self.quality_value.hide()
+            self.action_button.setText("Tạo tệp ZIP  →")
+            self.empty_label.setText("Thêm tệp để bắt đầu nén")
+        elif self.mode == "extract":
+            self.add_files_btn.setText("＋  Chọn ZIP")
+            self.drop_area.set_instruction(
+                "Kéo thả tệp ZIP vào đây",
+                "Có thể giải nén nhiều tệp ZIP cùng lúc",
+            )
+            self.compression_label.hide()
+            self.compression.hide()
+            self.extract_hint.show()
+            self.format_label.hide()
+            self.format_combo.hide()
+            self.quality_label.hide()
+            self.quality_slider.hide()
+            self.quality_value.hide()
+            self.action_button.setText("Giải nén ZIP  →")
+            self.empty_label.setText("Chọn một hoặc nhiều tệp ZIP")
+        else:
+            self.add_files_btn.setText("＋  Chọn ảnh")
+            self.drop_area.set_instruction(
+                "Kéo thả ảnh vào đây",
+                "Hỗ trợ PNG, JPG, WEBP, BMP và TIFF",
+            )
+            self.compression_label.hide()
+            self.compression.hide()
+            self.extract_hint.hide()
+            self.format_label.show()
+            self.format_combo.show()
+            self.quality_label.show()
+            self.quality_slider.show()
+            self.quality_value.show()
+            self.action_button.setText("Chuyển đổi ảnh  →")
+            self.empty_label.setText("Chọn ảnh cần chuyển đổi")
+
+        self.update_quality_state()
+        self.progress_area.hide()
+        self.refresh_queue()
+
+    def update_quality_state(self):
+        enabled = self.mode == "image" and self.format_combo.currentText() != "PNG"
+        self.quality_label.setEnabled(enabled)
+        self.quality_slider.setEnabled(enabled)
+        self.quality_value.setEnabled(enabled)
 
     def add_paths(self, paths: list[str]):
         for raw in paths:
@@ -423,8 +590,18 @@ class MainWindow(QMainWindow):
         self.refresh_queue()
 
     def choose_files(self):
+        if self.mode == "extract":
+            file_filter = ZIP_FILTER
+            title = "Chọn tệp ZIP"
+        elif self.mode == "image":
+            file_filter = IMAGE_FILTER
+            title = "Chọn ảnh"
+        else:
+            file_filter = "Tất cả tệp (*)"
+            title = "Chọn tệp"
+
         files, _ = QFileDialog.getOpenFileNames(
-            self, "Chọn tệp", str(Path.home()), "Tất cả tệp (*)"
+            self, title, str(Path.home()), file_filter
         )
         if files:
             self.add_paths(files)
@@ -437,11 +614,12 @@ class MainWindow(QMainWindow):
             self.add_paths([folder])
 
     def refresh_queue(self):
+        visible_paths = self.current_paths()
         self.table.setRowCount(0)
         total_size = 0
         valid_paths: list[str] = []
 
-        for raw in self.paths:
+        for raw in visible_paths:
             path = Path(raw)
             try:
                 if not path.is_file():
@@ -457,45 +635,42 @@ class MainWindow(QMainWindow):
             name_item.setIcon(self.icon_provider.icon(QFileInfo(str(path))))
             name_item.setToolTip(str(path))
             name_item.setData(Qt.ItemDataRole.UserRole, str(path))
-            name_item.setFlags(
-                name_item.flags() & ~Qt.ItemFlag.ItemIsEditable
-            )
+            name_item.setFlags(name_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
 
             size_item = QTableWidgetItem(self.format_size(size))
             size_item.setTextAlignment(
                 Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
             )
-            size_item.setFlags(
-                size_item.flags() & ~Qt.ItemFlag.ItemIsEditable
-            )
+            size_item.setFlags(size_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
 
             self.table.setItem(row, 0, name_item)
             self.table.setItem(row, 1, size_item)
-
             valid_paths.append(str(path))
             total_size += size
 
-        self.paths = valid_paths
-        count = len(valid_paths)
         self.queue_summary.setText(
-            f"{count} tệp  ·  {self.format_size(total_size)}"
+            f"{len(valid_paths)} tệp  ·  {self.format_size(total_size)}"
         )
-        self.queue_stack.setCurrentIndex(1 if count else 0)
+        self.queue_stack.setCurrentIndex(1 if valid_paths else 0)
         self.update_controls()
 
     def update_controls(self):
-        has_files = bool(self.paths)
+        has_files = bool(self.current_paths())
         has_selection = bool(self.table.selectionModel().selectedRows())
-
         self.remove_btn.setEnabled(has_selection and not self.busy)
-        self.clear_btn.setEnabled(has_files and not self.busy)
-        self.zip_button.setEnabled(has_files and not self.busy)
+        self.clear_btn.setEnabled(bool(self.paths) and not self.busy)
+        self.action_button.setEnabled(has_files and not self.busy)
 
     def set_busy(self, busy: bool):
         self.busy = busy
+        self.tabs.setEnabled(not busy)
         self.add_files_btn.setEnabled(not busy)
         self.add_folder_btn.setEnabled(not busy)
-        self.compression.setEnabled(not busy)
+        self.compression.setEnabled(not busy and self.mode == "zip")
+        self.format_combo.setEnabled(not busy and self.mode == "image")
+        self.quality_slider.setEnabled(
+            not busy and self.mode == "image" and self.format_combo.currentText() != "PNG"
+        )
         self.table.setEnabled(not busy)
         self.update_controls()
 
@@ -505,10 +680,7 @@ class MainWindow(QMainWindow):
             item = self.table.item(index.row(), 0)
             if item:
                 selected_paths.add(item.data(Qt.ItemDataRole.UserRole))
-
-        self.paths = [
-            path for path in self.paths if path not in selected_paths
-        ]
+        self.paths = [path for path in self.paths if path not in selected_paths]
         self.refresh_queue()
 
     def clear_queue(self):
@@ -519,38 +691,59 @@ class MainWindow(QMainWindow):
         self.progress_area.hide()
         self.progress.setValue(0)
 
-    def create_archive(self):
+    def run_action(self):
         if self.busy:
             return
-
-        if not self.paths:
+        paths = self.current_paths()
+        if not paths:
+            QMessageBox.information(self, "Chưa có tệp", "Hãy thêm tệp trước khi tiếp tục.")
             return
 
-        destination, _ = QFileDialog.getSaveFileName(
-            self,
-            "Lưu tệp ZIP",
-            str(Path.home() / "FileForge.zip"),
-            "Tệp ZIP (*.zip)",
-        )
-        if not destination:
-            return
+        compression = "Balanced"
+        output_format = "JPG"
+        quality = self.quality_slider.value()
 
-        if not destination.lower().endswith(".zip"):
-            destination += ".zip"
-
-        compression_label = self.compression.currentText()
-        compression = COMPRESSION_OPTIONS[compression_label]
+        if self.mode == "zip":
+            destination, _ = QFileDialog.getSaveFileName(
+                self,
+                "Lưu tệp ZIP",
+                str(Path.home() / "FileForge.zip"),
+                ZIP_FILTER,
+            )
+            if not destination:
+                return
+            if not destination.lower().endswith(".zip"):
+                destination += ".zip"
+            compression = COMPRESSION_OPTIONS[self.compression.currentText()]
+        elif self.mode == "extract":
+            destination = QFileDialog.getExistingDirectory(
+                self, "Chọn nơi giải nén", str(Path.home())
+            )
+            if not destination:
+                return
+        else:
+            destination = QFileDialog.getExistingDirectory(
+                self, "Chọn thư mục lưu ảnh", str(Path.home())
+            )
+            if not destination:
+                return
+            output_format = self.format_combo.currentText()
 
         self.set_busy(True)
         self.progress_area.show()
         self.progress.setValue(0)
-        self.progress_text.setText("Đang chuẩn bị nén…")
+        self.progress_text.setText("Đang chuẩn bị…")
 
-        self.worker = ArchiveWorker(
-            self.paths.copy(), destination, compression
+        self.worker = TaskWorker(
+            self.mode,
+            paths,
+            destination,
+            compression,
+            output_format,
+            quality,
         )
         self.worker.progress.connect(self.on_progress)
-        self.worker.succeeded.connect(self.on_success)
+        self.worker.completed.connect(self.on_completed)
         self.worker.failed.connect(self.on_failure)
         self.worker.finished.connect(lambda: self.set_busy(False))
         self.worker.start()
@@ -558,31 +751,84 @@ class MainWindow(QMainWindow):
     def on_progress(self, done: int, total: int, name: str):
         percent = int(done * 100 / total) if total else 100
         self.progress.setValue(percent)
-        self.progress_text.setText(f"Đang nén: {name}")
+        if self.mode == "zip":
+            prefix = "Đang nén"
+        elif self.mode == "extract":
+            prefix = "Đang giải nén"
+        else:
+            prefix = "Đang chuyển đổi"
+        self.progress_text.setText(f"{prefix}: {name}")
 
-    def on_success(self, path: str):
-        self.progress.setValue(100)
-        self.progress_text.setText("Đã tạo tệp ZIP thành công")
-
+    def show_result(self, title: str, message: str, folder: str, details: str = ""):
         dialog = QMessageBox(self)
-        dialog.setWindowTitle("Hoàn tất")
-        dialog.setText("Tệp ZIP đã được tạo.")
-        dialog.setInformativeText(Path(path).name)
+        dialog.setWindowTitle(title)
+        dialog.setText(message)
+        if details:
+            dialog.setDetailedText(details)
         open_folder_btn = dialog.addButton(
             "Mở thư mục", QMessageBox.ButtonRole.ActionRole
         )
         dialog.addButton("Đóng", QMessageBox.ButtonRole.AcceptRole)
         dialog.exec()
-
         if dialog.clickedButton() == open_folder_btn:
-            QDesktopServices.openUrl(
-                QUrl.fromLocalFile(str(Path(path).parent))
+            QDesktopServices.openUrl(QUrl.fromLocalFile(folder))
+
+    def on_completed(self, result: dict):
+        self.progress.setValue(100)
+        mode = result["mode"]
+
+        if mode == "zip":
+            path = Path(result["path"])
+            self.progress_text.setText("Đã tạo tệp ZIP")
+            self.show_result(
+                "Hoàn tất",
+                "Tệp ZIP đã được tạo thành công.",
+                str(path.parent),
+                path.name,
             )
+            return
+
+        outputs = result["outputs"]
+        errors = result["errors"]
+        output_count = len(outputs)
+        error_count = len(errors)
+
+        if mode == "extract":
+            self.progress_text.setText("Đã hoàn tất giải nén")
+            title = "Hoàn tất giải nén"
+            message = f"Đã giải nén thành công {output_count} tệp ZIP."
+            folder = str(Path(outputs[0]).parent) if outputs else str(Path.home())
+        else:
+            self.progress_text.setText("Đã hoàn tất chuyển đổi")
+            title = "Hoàn tất chuyển đổi"
+            message = f"Đã chuyển đổi thành công {output_count} ảnh."
+            folder = str(Path(outputs[0]).parent) if outputs else str(Path.home())
+
+        details = ""
+        if error_count:
+            details = "\n".join(
+                f"{Path(path).name}: {message}"
+                for path, message in errors[:10]
+            )
+            if error_count > 10:
+                details += f"\n… và {error_count - 10} lỗi khác."
+        if not output_count:
+            QMessageBox.warning(
+                self,
+                "Không có tệp được xử lý",
+                "Không có tệp nào được xử lý thành công.",
+            )
+            if details:
+                QMessageBox.information(self, "Chi tiết lỗi", details)
+            return
+        if error_count:
+            message += f"\nBỏ qua {error_count} tệp bị lỗi."
+        self.show_result(title, message, folder, details)
 
     def on_failure(self, message: str):
-        self.progress_text.setText("Không thể tạo tệp ZIP")
+        self.progress_text.setText("Tác vụ không thành công")
         QMessageBox.critical(
-            self, "Lỗi nén tệp", f"Không thể tạo tệp ZIP.\n\n{message}"
+            self, "Có lỗi xảy ra", f"Không thể hoàn thành tác vụ.\n\n{message}"
         )
 
 
