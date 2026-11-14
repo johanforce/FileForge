@@ -29,6 +29,12 @@ class TextConversionTests(unittest.TestCase):
         result = process_text("string_to_xml", escaped)
         self.assertIn("<root>", result["output"])
 
+    def test_handles_ten_thousand_character_value(self):
+        payload = '{"message":"' + ("x" * 10000) + '"}'
+        result = process_text("format_json", payload)
+        self.assertEqual(len(result["input_json"]["message"]), 10000)
+        self.assertEqual(len(result["output_json"]["message"]), 10000)
+
     def test_rejects_invalid_json_and_xml(self):
         with self.assertRaises(ValueError):
             process_text("format_json", '{"broken": ')
