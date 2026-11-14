@@ -40,6 +40,17 @@ class ModelGenerationTests(unittest.TestCase):
         self.assertIn('"optional-key": string;', code)
         self.assertIn("orders: Array<Order>;", code)
 
+    def test_merges_nested_objects_from_array_samples(self):
+        data = {
+            "items": [
+                {"meta": {"id": 1}},
+                {"meta": {"name": "second"}},
+            ]
+        }
+        code = generate_models(data, "RootModel", "dataclass")
+        self.assertIn("id: int | None = None", code)
+        self.assertIn("name: str | None = None", code)
+
     def test_wraps_array_root_in_root_field(self):
         code = generate_models([{"id": 1}, {"id": 2}], "RootModel", "dataclass")
         self.assertIn("root: list[Root]", code)
