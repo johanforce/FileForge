@@ -206,6 +206,8 @@ class _ModelBuilder:
         parent_name: str,
         field_name: str,
     ) -> str:
+        if value is None:
+            return "None"
         if isinstance(value, bool):
             return "bool"
         if isinstance(value, int):
