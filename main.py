@@ -630,6 +630,262 @@ class MainWindow(QMainWindow):
         self.on_mode_changed(0)
         self.refresh_queue()
 
+    def _build_text_pane(self, title: str, placeholder: str, read_only: bool):
+        pane = QFrame()
+        pane.setObjectName("Panel")
+        layout = QVBoxLayout(pane)
+        layout.setContentsMargins(12, 11, 12, 12)
+        layout.setSpacing(8)
+
+        header = QHBoxLayout()
+        title_label = QLabel(title)
+        title_label.setObjectName("Section")
+        header.addWidget(title_label)
+        header.addStretch()
+
+        text_button = QPushButton("Văn bản")
+        tree_button = QPushButton("Cấu trúc")
+        tree_button.setEnabled(False)
+        header.addWidget(text_button)
+        header.addWidget(tree_button)
+        layout.addLayout(header)
+
+        stack = QStackedWidget()
+        editor = QPlainTextEdit()
+        editor.setPlaceholderText(placeholder)
+        editor.setReadOnly(read_only)
+        editor.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth)
+        editor.setTabStopDistance(28)
+        tree = JSONTreeWidget()
+        stack.addWidget(editor)
+        stack.addWidget(tree)
+        layout.addWidget(stack, 1)
+
+        text_button.clicked.connect(lambda: stack.setCurrentIndex(0))
+        tree_button.clicked.connect(lambda: stack.setCurrentIndex(1))
+
+        return {
+            "widget": pane,
+            "stack": stack,
+            "editor": editor,
+            "tree": tree,
+            "text_button": text_button,
+            "tree_button": tree_button,
+        }
+
+    def build_text_panel(self):
+        panel = QFrame()
+        panel.setObjectName("Panel")
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(14, 14, 14, 14)
+        layout.setSpacing(12)
+
+        toolbar = QHBoxLayout()
+        toolbar.setSpacing(8)
+
+        operation_label = QLabel("Chức năng")
+        operation_label.setObjectName("Muted")
+        toolbar.addWidget(operation_label)
+
+        self.text_operation = QComboBox()
+        operations = [
+            ("JSON → Chuỗi", "json_to_string"),
+            ("Chuỗi → JSON", "string_to_json"),
+            ("Định dạng JSON", "format_json"),
+            ("XML → Chuỗi", "xml_to_string"),
+            ("Chuỗi → XML", "string_to_xml"),
+            ("JSON → Model", "json_to_model"),
+        ]
+        for label, operation in operations:
+            self.text_operation.addItem(label, operation)
+        self.text_operation.currentIndexChanged.connect(
+            self.update_text_model_controls
+        )
+        toolbar.addWidget(self.text_operation, 2)
+
+        self.text_model_label = QLabel("Model")
+        self.text_model_label.setObjectName("Muted")
+        toolbar.addWidget(self.text_model_label)
+
+        self.text_model_target = QComboBox()
+        self.text_model_target.addItem("Python dataclass", "dataclass")
+        self.text_model_target.addItem("Pydantic v2", "pydantic")
+        self.text_model_target.addItem("TypeScript", "typescript")
+        toolbar.addWidget(self.text_model_target, 1)
+
+        self.text_class_label = QLabel("Tên lớp")
+        self.text_class_label.setObjectName("Muted")
+        toolbar.addWidget(self.text_class_label)
+
+        self.text_class_name = QLineEdit("RootModel")
+        self.text_class_name.setPlaceholderText("RootModel")
+        self.text_class_name.setMaximumWidth(145)
+        toolbar.addWidget(self.text_class_name)
+
+        self.text_execute_btn = QPushButton("Thực hiện  →")
+        self.text_execute_btn.setObjectName("Primary")
+        self.text_execute_btn.clicked.connect(self.run_text_action)
+        toolbar.addWidget(self.text_execute_btn)
+
+        layout.addLayout(toolbar)
+
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+        splitter.setChildrenCollapsible(False)
+
+        self.input_pane = self._build_text_pane(
+            "ĐẦU VÀO",
+            'Dán JSON hoặc XML vào đây…\\n\\nVí dụ JSON:\\n{\\n  "name": "FileForge",\\n  "active": true\\n}',
+            False,
+        )
+        self.output_pane = self._build_text_pane(
+            "KẾT QUẢ",
+            "Kết quả sẽ hiển thị ở đây…",
+            True,
+        )
+
+        splitter.addWidget(self.input_pane["widget"])
+        splitter.addWidget(self.output_pane["widget"])
+        splitter.setStretchFactor(0, 1)
+        splitter.setStretchFactor(1, 1)
+        splitter.setSizes([500, 500])
+        layout.addWidget(splitter, 1)
+
+        self.input_editor = self.input_pane["editor"]
+        self.input_tree = self.input_pane["tree"]
+        self.input_tree_button = self.input_pane["tree_button"]
+        self.input_editor.textChanged.connect(self.invalidate_input_tree)
+
+        self.output_editor = self.output_pane["editor"]
+        self.output_tree = self.output_pane["tree"]
+        self.output_tree_button = self.output_pane["tree_button"]
+
+        footer = QHBoxLayout()
+        self.text_status = QLabel("Sẵn sàng")
+        self.text_status.setObjectName("Muted")
+        footer.addWidget(self.text_status)
+        footer.addStretch()
+
+        self.text_copy_btn = QPushButton("Sao chép kết quả")
+        self.text_copy_btn.setEnabled(False)
+        self.text_copy_btn.clicked.connect(self.copy_text_result)
+        footer.addWidget(self.text_copy_btn)
+
+        self.text_progress = QProgressBar()
+        self.text_progress.setRange(0, 0)
+        self.text_progress.setFixedWidth(120)
+        self.text_progress.hide()
+        footer.addWidget(self.text_progress)
+
+        layout.addLayout(footer)
+        self.update_text_model_controls()
+        return panel
+
+    def update_text_model_controls(self):
+        is_model = self.text_operation.currentData() == "json_to_model"
+        self.text_model_label.setVisible(is_model)
+        self.text_model_target.setVisible(is_model)
+        self.text_class_label.setVisible(is_model)
+        self.text_class_name.setVisible(is_model)
+
+    def invalidate_input_tree(self):
+        self.input_tree_button.setEnabled(False)
+        self.input_tree.clear()
+        if self.input_pane["stack"].currentIndex() == 1:
+            self.input_pane["stack"].setCurrentIndex(0)
+        self.text_status.setText("Nội dung đã thay đổi · hãy thực hiện lại để xem cấu trúc")
+
+    def run_text_action(self):
+        if self.text_busy:
+            return
+
+        source = self.input_editor.toPlainText()
+        if not source.strip():
+            QMessageBox.information(
+                self, "Chưa có dữ liệu", "Dán JSON hoặc XML vào ô đầu vào trước."
+            )
+            return
+
+        operation = self.text_operation.currentData()
+        class_name = self.text_class_name.text().strip() or "RootModel"
+        model_target = self.text_model_target.currentData()
+
+        self.text_busy = True
+        self.tabs.setEnabled(False)
+        self.text_execute_btn.setEnabled(False)
+        self.text_copy_btn.setEnabled(False)
+        self.input_editor.setReadOnly(True)
+        self.text_progress.show()
+        self.text_status.setText("Đang xử lý trong luồng nền…")
+
+        self.text_worker = TextTaskWorker(
+            operation,
+            source,
+            class_name,
+            model_target,
+        )
+        self.text_worker.completed.connect(self.on_text_completed)
+        self.text_worker.failed.connect(self.on_text_failed)
+        self.text_worker.start()
+
+    def on_text_completed(self, result: dict):
+        self.text_busy = False
+        self.tabs.setEnabled(True)
+        self.text_execute_btn.setEnabled(True)
+        self.input_editor.setReadOnly(False)
+        self.text_progress.hide()
+
+        self.output_editor.setPlainText(result["output"])
+
+        input_valid = result.get("input_json_valid", False)
+        output_valid = result.get("output_json_valid", False)
+
+        if input_valid:
+            self.input_tree.set_json(result["input_json"])
+            self.input_tree_button.setEnabled(True)
+        else:
+            self.input_tree.clear()
+            self.input_tree_button.setEnabled(False)
+            self.input_pane["stack"].setCurrentIndex(0)
+
+        if output_valid:
+            self.output_tree.set_json(result["output_json"])
+            self.output_tree_button.setEnabled(True)
+        else:
+            self.output_tree.clear()
+            self.output_tree_button.setEnabled(False)
+            self.output_pane["stack"].setCurrentIndex(0)
+
+        if result.get("output_kind") == "json":
+            self.output_pane["stack"].setCurrentIndex(1)
+        else:
+            self.output_pane["stack"].setCurrentIndex(0)
+
+        size = len(self.input_editor.toPlainText())
+        self.text_status.setText(f"Hoàn tất · {size:,} ký tự đầu vào")
+        self.text_execute_btn.setEnabled(True)
+        self.text_copy_btn.setEnabled(bool(result["output"]))
+
+    def on_text_failed(self, message: str):
+        self.text_busy = False
+        self.tabs.setEnabled(True)
+        self.text_execute_btn.setEnabled(True)
+        self.input_editor.setReadOnly(False)
+        self.text_progress.hide()
+        self.text_status.setText("Không thể xử lý · kiểm tra dữ liệu đầu vào")
+        QMessageBox.warning(
+            self,
+            "Dữ liệu chưa hợp lệ",
+            "Không thể xử lý nội dung. Kiểm tra cú pháp JSON/XML rồi thử lại.\\n\\n"
+            + message,
+        )
+
+    def copy_text_result(self):
+        value = self.output_editor.toPlainText()
+        if not value:
+            return
+        QApplication.clipboard().setText(value)
+        self.text_status.setText("Đã sao chép kết quả")
+
     @staticmethod
     def format_size(size: int) -> str:
         amount = float(size)
@@ -650,6 +906,22 @@ class MainWindow(QMainWindow):
         return list(self.paths)
 
     def on_mode_changed(self, index: int):
+        if index == 3:
+            self.mode = "text"
+            self.add_files_btn.hide()
+            self.add_folder_btn.hide()
+            self.drop_area.hide()
+            self.queue_panel.hide()
+            self.action_panel.hide()
+            self.text_panel.show()
+            return
+
+        self.text_panel.hide()
+        self.add_files_btn.show()
+        self.add_folder_btn.show()
+        self.drop_area.show()
+        self.queue_panel.show()
+        self.action_panel.show()
         self.mode = ("zip", "extract", "image")[index]
 
         if self.mode == "zip":
