@@ -49,6 +49,12 @@ class UISmokeTests(unittest.TestCase):
         self.assertTrue(more.data(0, JSONTreeWidget.MORE_ROLE))
         tree._load_more(more, 0)
         self.app.processEvents()
+        self.assertEqual(root.childCount(), 601)  # 600 fields + next-page row
+
+        final_page = root.child(600)
+        self.assertTrue(final_page.data(0, JSONTreeWidget.MORE_ROLE))
+        tree._load_more(final_page, 0)
+        self.app.processEvents()
 
         self.assertEqual(root.childCount(), 650)  # all 650 fields are accessible
         self.assertEqual(root.child(649).text(0), "field_649")
