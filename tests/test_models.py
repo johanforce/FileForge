@@ -40,7 +40,7 @@ class ModelGenerationTests(unittest.TestCase):
         self.assertIn("orders: Array<Order>;", code)
 
     def test_wraps_array_root_in_root_field(self):
-        code = generate_models([{"id": 1}, {"id": 2}], "Root", "dataclass")
+        code = generate_models([{"id": 1}, {"id": 2}], "RootModel", "dataclass")
         self.assertIn("root: list[Root]", code)
         self.assertIn("class Root:", code)
 
