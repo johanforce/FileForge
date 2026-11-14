@@ -300,10 +300,12 @@ class TextTaskWorker(QThread):
 
 
 class JSONTreeWidget(QTreeWidget):
-    """Lazy JSON tree: nested objects are expanded only when the user opens them."""
+    """Lazy, paginated JSON tree that does not omit large object members."""
 
-    MAX_CHILDREN_PER_NODE = 300
+    MAX_CHILDREN_PER_PAGE = 300
     LAZY_ROLE = Qt.ItemDataRole.UserRole + 1
+    MORE_ROLE = Qt.ItemDataRole.UserRole + 2
+    PAGE_ROLE = Qt.ItemDataRole.UserRole + 3
 
     def __init__(self):
         super().__init__()
@@ -314,6 +316,7 @@ class JSONTreeWidget(QTreeWidget):
         self.setAlternatingRowColors(True)
         self.setSortingEnabled(False)
         self.itemExpanded.connect(self._populate_item)
+        self.itemDoubleClicked.connect(self._load_more)
 
     @staticmethod
     def _is_container(value) -> bool:
@@ -340,8 +343,15 @@ class JSONTreeWidget(QTreeWidget):
 
     def _add_lazy_marker(self, item: QTreeWidgetItem):
         item.setData(0, self.LAZY_ROLE, True)
-        marker = QTreeWidgetItem(["", ""])
-        item.addChild(marker)
+        item.addChild(QTreeWidgetItem(["", ""]))
+
+    @staticmethod
+    def _children(value):
+        if isinstance(value, dict):
+            return list(value.items())
+        if isinstance(value, list):
+            return [(f"[{index}]", child) for index, child in enumerate(value)]
+        return []
 
     def set_json(self, value):
         self.clear()
@@ -354,35 +364,54 @@ class JSONTreeWidget(QTreeWidget):
             root.setExpanded(True)
         self.expandToDepth(0)
 
-    def _populate_item(self, item: QTreeWidgetItem):
-        if not item.data(0, self.LAZY_ROLE):
-            return
+    def _append_page(self, parent: QTreeWidgetItem, start: int):
+        value = parent.data(0, Qt.ItemDataRole.UserRole)
+        values = self._children(value)
+        end = min(start + self.MAX_CHILDREN_PER_PAGE, len(values))
 
-        value = item.data(0, Qt.ItemDataRole.UserRole)
-        item.setData(0, self.LAZY_ROLE, False)
-        while item.childCount():
-            item.takeChild(0)
-
-        if isinstance(value, dict):
-            values = list(value.items())
-        elif isinstance(value, list):
-            values = [(f"[{index}]", child) for index, child in enumerate(value)]
-        else:
-            return
-
-        shown = values[: self.MAX_CHILDREN_PER_NODE]
-        for key, child_value in shown:
+        for key, child_value in values[start:end]:
             child = QTreeWidgetItem([str(key), self._preview(child_value)])
             child.setData(0, Qt.ItemDataRole.UserRole, child_value)
             if self._is_container(child_value) and child_value:
                 self._add_lazy_marker(child)
-            item.addChild(child)
+            parent.addChild(child)
 
-        remaining = len(values) - len(shown)
+        parent.setData(0, self.PAGE_ROLE, end)
+        remaining = len(values) - end
         if remaining:
-            more = QTreeWidgetItem(["…", f"Còn {remaining} mục"])
-            more.setDisabled(True)
-            item.addChild(more)
+            next_count = min(self.MAX_CHILDREN_PER_PAGE, remaining)
+            more = QTreeWidgetItem([
+                f"Nạp thêm {next_count} mục",
+                f"Còn {remaining} mục",
+            ])
+            more.setData(0, self.MORE_ROLE, True)
+            more.setToolTip(0, "Nhấp đúp để nạp trang tiếp theo")
+            more.setToolTip(1, "Các mục còn lại không bị loại khỏi dữ liệu")
+            parent.addChild(more)
+
+    def _populate_item(self, item: QTreeWidgetItem):
+        if not item.data(0, self.LAZY_ROLE):
+            return
+
+        item.setData(0, self.LAZY_ROLE, False)
+        while item.childCount():
+            item.takeChild(0)
+        self._append_page(item, 0)
+
+    def _load_more(self, item: QTreeWidgetItem, _column: int = 0):
+        if not item.data(0, self.MORE_ROLE):
+            return
+
+        parent = item.parent()
+        if parent is None:
+            return
+
+        index = parent.indexOfChild(item)
+        if index >= 0:
+            parent.takeChild(index)
+
+        start = parent.data(0, self.PAGE_ROLE) or 0
+        self._append_page(parent, start)
 
 
 class DropArea(QFrame):
@@ -656,7 +685,10 @@ class MainWindow(QMainWindow):
         editor = QPlainTextEdit()
         editor.setPlaceholderText(placeholder)
         editor.setReadOnly(read_only)
-        editor.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth)
+        # Avoid expensive line wrapping for long compact JSON/string payloads.
+        # QPlainTextEdit has no fixed input-size cap here.
+        editor.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
+        editor.setMaximumBlockCount(0)
         editor.setTabStopDistance(28)
         tree = JSONTreeWidget()
         stack.addWidget(editor)
