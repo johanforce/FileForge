@@ -49,17 +49,21 @@ def process_text(
         "input_json": None,
         "output_json": None,
         "output_kind": "text",
+        "input_json_valid": False,
+        "output_json_valid": False,
     }
 
     if operation in {"json_to_string", "string_to_json", "format_json", "json_to_model"}:
         data = json.loads(text)
         result["input_json"] = data
+        result["input_json_valid"] = True
 
         if operation == "json_to_string":
             result["output"] = json.dumps(
                 data, ensure_ascii=False, separators=(",", ":")
             )
             result["output_json"] = data
+            result["output_json_valid"] = True
             result["output_kind"] = "json"
         elif operation == "string_to_json":
             result["output"] = json.dumps(data, ensure_ascii=False, indent=2)
