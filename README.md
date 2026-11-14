@@ -48,6 +48,7 @@
 - Python 3.10 trở lên (khuyến nghị Python 3.12).
 - PySide6.
 - Pillow.
+- Pydantic v2 chỉ cần cài trong dự án đích nếu chọn xuất model Pydantic; FileForge không cần Pydantic để chạy.
 
 ## Cài đặt và chạy trên macOS
 
