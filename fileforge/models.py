@@ -283,7 +283,8 @@ def generate_models(
 ) -> str:
     """Generate dataclass, Pydantic v2, or TypeScript declarations from JSON."""
     if not isinstance(data, dict):
-        raise ValueError("JSON gốc phải là một object (bắt đầu bằng { ... }).")
+        # Preserve array/scalar roots by wrapping them in a named root field.
+        data = {"root": data}
 
     if target not in {"dataclass", "pydantic", "typescript"}:
         raise ValueError(f"Kiểu model không được hỗ trợ: {target}")
