@@ -312,6 +312,7 @@ class JSONTreeWidget(QTreeWidget):
         self.setColumnWidth(0, 180)
         self.setUniformRowHeights(True)
         self.setAlternatingRowColors(True)
+        self.setSortingEnabled(False)
         self.itemExpanded.connect(self._populate_item)
 
     @staticmethod
