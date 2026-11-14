@@ -734,7 +734,7 @@ class MainWindow(QMainWindow):
 
         self.input_pane = self._build_text_pane(
             "ĐẦU VÀO",
-            'Dán JSON hoặc XML vào đây…\\n\\nVí dụ JSON:\\n{\\n  "name": "FileForge",\\n  "active": true\\n}',
+            'Dán JSON hoặc XML vào đây…\n\nVí dụ JSON:\n{\n  "name": "FileForge",\n  "active": true\n}',
             False,
         )
         self.output_pane = self._build_text_pane(
@@ -875,7 +875,7 @@ class MainWindow(QMainWindow):
         QMessageBox.warning(
             self,
             "Dữ liệu chưa hợp lệ",
-            "Không thể xử lý nội dung. Kiểm tra cú pháp JSON/XML rồi thử lại.\\n\\n"
+            "Không thể xử lý nội dung. Kiểm tra cú pháp JSON/XML rồi thử lại.\n\n"
             + message,
         )
 
