@@ -349,6 +349,7 @@ class JSONTreeWidget(QTreeWidget):
         self.addTopLevelItem(root)
         if self._is_container(value) and value:
             self._add_lazy_marker(root)
+            self._populate_item(root)
             root.setExpanded(True)
         self.expandToDepth(0)
 
