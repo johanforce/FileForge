@@ -30,7 +30,7 @@
 - Chuỗi → JSON: phân tích JSON text và hiển thị lại dạng dễ đọc.
 - Định dạng JSON: chuẩn hóa thụt lề 2 spaces, giữ Unicode.
 - XML → Chuỗi: kiểm tra XML hợp lệ và xuất dạng compact.
-- Chuỗi → XML: chấp nhận XML thô hoặc XML nằm trong một JSON string, sau đó định dạng dễ đọc.
+- Chuỗi → XML: chấp nhận XML thô hoặc XML nằm trong một JSON string, sau đó định dạng dễ đọc.\n- HTML → String: escape dấu gạch chéo ngược, dấu nháy kép, xuống dòng, carriage return và tab; bọc kết quả trong JSON string.\n- String → HTML: giải mã JSON string hoặc nhận HTML thô, kiểm tra thẻ HTML và định dạng lại với thụt lề 2 spaces.
 - JSON → Model: sinh Python dataclass, Pydantic v2 hoặc TypeScript interface.
 - Hỗ trợ object lồng nhau, mảng, trường có thể thiếu và giá trị null.
 - JSON gốc dạng mảng/scalar được bọc trong trường root.
