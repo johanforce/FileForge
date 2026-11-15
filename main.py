@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 from PySide6.QtCore import QFileInfo, Qt, QThread, QUrl, Signal
-from PySide6.QtGui import QDesktopServices, QDragEnterEvent, QDropEvent, QFont, QColor, QSyntaxHighlighter, QTextCharFormat, QKeySequence, QShortcut
+from PySide6.QtGui import QDesktopServices, QDragEnterEvent, QDropEvent, QFont, QColor, QPainter, QPen, QSyntaxHighlighter, QTextCharFormat, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
     QAbstractItemView,
@@ -68,7 +68,7 @@ QComboBox {
     border-radius: 12px;
     min-height: 40px;
     min-width: 112px;
-    padding: 0 40px 0 14px;
+    padding: 0 44px 0 14px;
     font-weight: 600;
     selection-background-color: #d2e3fc;
     selection-color: #174ea6;
@@ -79,7 +79,7 @@ QComboBox:disabled { color: #9aa0a6; background: #f8f9fa; border-color: #e8eaed;
 QComboBox::drop-down {
     subcontrol-origin: padding;
     subcontrol-position: top right;
-    width: 36px;
+    width: 38px;
     border: 0;
     border-left: 1px solid #edf0f5;
     border-top-right-radius: 11px;
@@ -87,34 +87,32 @@ QComboBox::drop-down {
     background: transparent;
 }
 QComboBox::drop-down:hover { background: #f1f6ff; }
-QComboBox::down-arrow {
-    width: 0;
-    height: 0;
-    border-left: 5px solid transparent;
-    border-right: 5px solid transparent;
-    border-top: 6px solid #5f6368;
-}
-QComboBox:on::down-arrow { border-top-color: #1a73e8; }
-QComboBox QAbstractItemView, QListView#ComboPopupView {
+/* The arrow is painted by StyledComboBox so it renders consistently on Windows. */
+QComboBox::down-arrow { image: none; width: 0px; height: 0px; }
+QFrame#ComboPopupContainer {
     background: #ffffff;
-    color: #202124;
     border: 1px solid #dce3ed;
     border-radius: 12px;
+}
+QListView#ComboPopupView {
+    background: transparent;
+    color: #202124;
+    border: none;
     padding: 6px;
     outline: 0;
     selection-background-color: #e8f0fe;
     selection-color: #174ea6;
 }
-QComboBox QAbstractItemView::item, QListView#ComboPopupView::item {
-    min-height: 34px;
-    padding: 8px 12px;
+QListView#ComboPopupView::item {
+    min-height: 22px;
+    padding: 7px 12px;
     margin: 2px;
     border-radius: 7px;
 }
-QComboBox QAbstractItemView::item:hover, QListView#ComboPopupView::item:hover { background: #f4f7fc; color: #174ea6; }
-QComboBox QAbstractItemView::item:selected, QListView#ComboPopupView::item:selected { background: #e8f0fe; color: #174ea6; font-weight: 700; }
-QComboBox QAbstractItemView QScrollBar:vertical, QListView#ComboPopupView QScrollBar:vertical { width: 8px; background: transparent; margin: 4px 2px; }
-QComboBox QAbstractItemView QScrollBar::handle:vertical, QListView#ComboPopupView QScrollBar::handle:vertical { background: #c7d2e2; border-radius: 4px; min-height: 24px; }
+QListView#ComboPopupView::item:hover { background: #f4f7fc; color: #174ea6; }
+QListView#ComboPopupView::item:selected { background: #e8f0fe; color: #174ea6; font-weight: 700; }
+QListView#ComboPopupView QScrollBar:vertical { width: 8px; background: transparent; margin: 4px 2px; }
+QListView#ComboPopupView QScrollBar::handle:vertical { background: #c7d2e2; border-radius: 4px; min-height: 24px; }
 QLineEdit:hover { border-color: #8ab4f8; }
 QLineEdit:focus, QPlainTextEdit:focus { border: 1px solid #1a73e8; }
 QTabWidget::pane { border: 0; border-bottom: 1px solid #e8eaed; }
@@ -141,22 +139,74 @@ QSlider::handle:horizontal { background: #1a73e8; width: 14px; margin: -5px 0; b
 
 
 class StyledComboBox(QComboBox):
-    """Consistent, stylesheet-driven combo box popup across Windows, macOS and Linux."""
+    """Combo box with a deterministic chevron and a rounded popup frame."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
         popup = QListView()
         popup.setObjectName("ComboPopupView")
         popup.setFrameShape(QFrame.Shape.NoFrame)
+        popup.setLineWidth(0)
         popup.setUniformItemSizes(True)
         popup.setMouseTracking(True)
+        popup.setSpacing(1)
         popup.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        popup.setAutoFillBackground(False)
+        popup.viewport().setAutoFillBackground(False)
         self.setView(popup)
-        self.setMaxVisibleItems(12)
+        self.setMaxVisibleItems(10)
         self.setSizeAdjustPolicy(
             QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
         )
         self.setMinimumContentsLength(10)
+
+        # QComboBox owns a separate QFrame for its popup. Style that frame,
+        # rather than trying to round the scroll area's viewport itself.
+        self._popup_container = popup.parentWidget()
+        if self._popup_container is not None:
+            self._popup_container.setObjectName("ComboPopupContainer")
+            self._popup_container.setAttribute(
+                Qt.WidgetAttribute.WA_StyledBackground, True
+            )
+            if isinstance(self._popup_container, QFrame):
+                self._popup_container.setFrameShape(QFrame.Shape.NoFrame)
+
+    def paintEvent(self, event):
+        super().paintEvent(event)
+
+        # Qt styles on Windows may ignore CSS border-based arrow shapes.
+        # Draw a compact chevron ourselves after the native combo painting.
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        color = "#1a73e8" if self.hasFocus() else "#5f6368"
+        if not self.isEnabled():
+            color = "#9aa0a6"
+        painter.setPen(
+            QPen(
+                QColor(color),
+                1.8,
+                Qt.PenStyle.SolidLine,
+                Qt.PenCapStyle.RoundCap,
+                Qt.PenJoinStyle.RoundJoin,
+            )
+        )
+        center_x = self.width() - 19
+        center_y = self.height() // 2
+        if self.view().isVisible():
+            painter.drawLine(center_x - 4, center_y + 2, center_x, center_y - 2)
+            painter.drawLine(center_x, center_y - 2, center_x + 4, center_y + 2)
+        else:
+            painter.drawLine(center_x - 4, center_y - 2, center_x, center_y + 2)
+            painter.drawLine(center_x, center_y + 2, center_x + 4, center_y - 2)
+        painter.end()
+
+    def showPopup(self):
+        super().showPopup()
+        self.update()
+
+    def hidePopup(self):
+        super().hidePopup()
+        self.update()
 
 
 COMPRESSION_OPTIONS = {
