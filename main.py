@@ -309,7 +309,9 @@ class FoldablePlainTextEdit(QPlainTextEdit):
     def mousePressEvent(self, event):
         cursor = self.cursorForPosition(event.position().toPoint())
         block = cursor.block()
-        if cursor.positionInBlock() <= 2 and block.text().lstrip().startswith(("▼ ", "▶ ")):
+        line = block.text()
+        marker = min((pos for pos in (line.find("▼ "), line.find("▶ ")) if pos >= 0), default=-1)
+        if marker >= 0 and cursor.positionInBlock() <= marker + 1:
             self.foldRequested.emit(block.blockNumber())
             return
         super().mousePressEvent(event)
@@ -1260,7 +1262,7 @@ class MainWindow(QMainWindow):
         if not value:
             return
         if self.text_html_mode:
-            value = re.sub(r"^(\s*)[▼▶] ", r"\1", value, flags=re.MULTILINE)
+            value = re.sub(r"^([ \t]*)[▼▶] ", r"\1", value, flags=re.MULTILINE)
         QApplication.clipboard().setText(value)
         self.text_status.setText("Đã sao chép kết quả")
 
