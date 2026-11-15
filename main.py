@@ -1532,10 +1532,10 @@ class MainWindow(QMainWindow):
         self.curl_input = QPlainTextEdit()
         self.curl_input.setObjectName("CodeEditor")
         self.curl_input.setPlaceholderText(
-            "Dán request từ DevTools…\\n\\n"
-            "Ví dụ:\\n**METHOD: POST**\\n**URL**\\n"
-            "**https://example.com/api**\\n**HEADERS**\\n"
-            "**x-user-sub:**\\n**giá-trị-nguyên-văn**"
+            "Dán request từ DevTools…\n\n"
+            "Ví dụ:\n**METHOD: POST**\n**URL**\n"
+            "**https://example.com/api**\n**HEADERS**\n"
+            "**x-user-sub:**\n**giá-trị-nguyên-văn**"
         )
         request_layout.addWidget(self.curl_input, 3)
 
