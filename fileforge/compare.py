@@ -13,7 +13,7 @@ def _text_tokens(value: str, mode: str) -> list[str]:
     if mode == "line":
         return value.splitlines(keepends=True)
     if mode == "word":
-        return re.findall(r"\\s+|\\w+|[^\\w\\s]+", value, flags=re.UNICODE)
+        return re.findall(r"\s+|\w+|[^\w\s]+", value, flags=re.UNICODE)
     if mode == "character":
         return list(value)
     raise ValueError("Chế độ so sánh văn bản không hợp lệ.")
@@ -22,7 +22,7 @@ def _text_tokens(value: str, mode: str) -> list[str]:
 def _token_key(token: str, mode: str, ignore_case: bool, ignore_whitespace: bool) -> str:
     value = token
     if ignore_whitespace:
-        value = re.sub(r"\\s+", "", value)
+        value = re.sub(r"\s+", "", value)
     if ignore_case:
         value = value.casefold()
     return value
@@ -234,4 +234,4 @@ def format_text_diff_report(result: dict[str, Any]) -> str:
             rows.append(
                 f'~ {item["path"]}: {item["before"]} → {item["after"]}'
             )
-    return "\\n".join(rows)
+    return "\n".join(rows)
