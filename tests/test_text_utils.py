@@ -10,7 +10,7 @@ class TextConversionTests(unittest.TestCase):
         self.assertTrue(encoded.startswith('"') and encoded.endswith('"'))
         decoded = process_text("string_to_json", encoded)
         self.assertEqual(decoded["output_json"], {"name": "An", "count": 2})
-        self.assertIn('\\n  "name"', decoded["output"])
+        self.assertIn('\n  "name"', decoded["output"])
 
     def test_string_to_json_and_format(self):
         source = '{"name":"An","items":[1,2]}'
@@ -74,11 +74,12 @@ class TextConversionTests(unittest.TestCase):
     def test_handles_one_hundred_fifty_thousand_character_value(self):
         payload = '{"message":"' + ("x" * 150000) + '"}'
         formatted = process_text("format_json", payload)
-        compact = process_text("json_to_string", formatted["output"])
+        encoded = process_text("json_to_string", formatted["output"])
+        decoded = process_text("string_to_json", encoded["output"])
         self.assertEqual(len(formatted["input_json"]["message"]), 150000)
         self.assertEqual(len(formatted["output_json"]["message"]), 150000)
-        self.assertEqual(len(compact["output_json"]["message"]), 150000)
-        self.assertEqual(len(compact["output"]), 150014)
+        self.assertEqual(len(decoded["output_json"]["message"]), 150000)
+        self.assertEqual(len(encoded["output"]), 150016)
 
     def test_rejects_invalid_json_and_xml(self):
         with self.assertRaises(ValueError):
