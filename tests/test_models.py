@@ -40,6 +40,30 @@ class ModelGenerationTests(unittest.TestCase):
         self.assertIn('"optional-key": string;', code)
         self.assertIn("orders: Array<Order>;", code)
 
+    def test_generates_java_classes(self):
+        code = generate_models(SAMPLE, "Customer", "java")
+        self.assertIn("class Customer {", code)
+        self.assertIn("class Profile {", code)
+        self.assertIn("List<Order> orders;", code)
+        self.assertIn("String optionalKey;", code)
+        self.assertIn("import java.util.List;", code)
+
+    def test_generates_kotlin_data_classes(self):
+        code = generate_models(SAMPLE, "Customer", "kotlin")
+        self.assertIn("data class Customer(", code)
+        self.assertIn("data class Profile(", code)
+        self.assertIn("val nickname: String?", code)
+        self.assertIn("val note: String? = null", code)
+        self.assertIn("List<Order>", code)
+
+    def test_generates_c_structs(self):
+        code = generate_models(SAMPLE, "Customer", "c")
+        self.assertIn("#include <stdint.h>", code)
+        self.assertIn("typedef struct Customer", code)
+        self.assertIn("Order *orders;", code)
+        self.assertIn("size_t orders_count;", code)
+        self.assertIn("char *name;", code)
+
     def test_merges_nested_objects_from_array_samples(self):
         data = {
             "items": [
