@@ -63,8 +63,8 @@ def build_curl_command(
     method: str,
     url: str,
     headers: list[tuple[str, str]],
-    body: str | None = None,
     shell: str | None = None,
+    body: str | None = None,
 ) -> str:
     """Build cURL for POSIX shells or PowerShell (not legacy cmd.exe)."""
     if shell is None:
@@ -172,5 +172,5 @@ def parse_http_request(value: str, shell: str | None = None) -> dict:
         "url": url,
         "headers": headers,
         "body": body,
-        "curl": build_curl_command(method, url, headers, body, shell),
+        "curl": build_curl_command(method, url, headers, shell=shell, body=body),
     }
