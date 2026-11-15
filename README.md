@@ -32,9 +32,9 @@
 - XML Format ⇄ Minify: định dạng hoặc rút gọn XML.
 - String ⇄ HTML: chuyển đổi chuỗi HTML; chiều HTML → String loại bỏ xuống dòng để tạo chuỗi gọn, chiều String → HTML giải mã escape và định dạng theo cấu trúc thẻ.
 - XML ⇄ String: kiểm tra XML và chuyển đổi giữa XML thô với nội dung chuỗi.
-- JSON → Model: sinh Python dataclass, Pydantic v2 hoặc TypeScript interface.
+- JSON → Model: sinh Python dataclass, Pydantic v2, TypeScript interface, Java class, Kotlin data class hoặc C struct.
 - Chọn thao tác trên một thanh chức năng duy nhất, có nút đảo chiều chuyển đổi; hỗ trợ Indent 2/4 spaces.
-- Giao diện theo Material Design 3, font dễ đọc; HTML có tô màu cú pháp, tách dòng thuộc tính khi có nhiều thuộc tính, click marker ▼/▶ để thu gọn từng thẻ, nút thu gọn/mở rộng tất cả, tìm kiếm, Copy và bật/tắt Wrap.\n- Phím tắt: Ctrl+Enter để chuyển đổi, Ctrl+F để tìm trong ô đang focus (Input hoặc Output), Esc để đóng tìm kiếm.
+- Giao diện theo Material Design 3; vùng Input/Output dùng nền tối và tô màu cú pháp theo phong cách Android Studio cho JSON, Java, Kotlin và C; HTML có tô màu cú pháp, tách dòng thuộc tính khi có nhiều thuộc tính, click marker ▼/▶ để thu gọn từng thẻ, nút thu gọn/mở rộng tất cả, tìm kiếm, Copy và bật/tắt Wrap.\n- Phím tắt: Ctrl+Enter để chuyển đổi, Ctrl+F để tìm trong ô đang focus (Input hoặc Output), Esc để đóng tìm kiếm.
 - Hỗ trợ object lồng nhau, mảng, trường có thể thiếu và giá trị null; JSON root dạng mảng/scalar được bọc trong `root`.
 
 ### Hiển thị cấu trúc và hiệu năng
