@@ -65,7 +65,7 @@ QTabBar::tab:hover { color: #174ea6; }
 QTableWidget { background: #ffffff; alternate-background-color: #f8fafd; border: 0; border-radius: 10px; gridline-color: transparent; selection-background-color: #e8f0fe; selection-color: #174ea6; outline: 0; }
 QHeaderView::section { background: #f8f9fa; color: #5f6368; padding: 10px 12px; border: 0; font-size: 11px; font-weight: 700; }
 QTableWidget::item { padding: 7px 10px; border: 0; }
-QPlainTextEdit { background: #fbfcff; border: 1px solid #e1e5ec; border-radius: 10px; padding: 12px; color: #202124; selection-background-color: #d2e3fc; selection-color: #174ea6; font-family: "SFMono-Regular", "Menlo", "Consolas", monospace; font-size: 14px; }
+QPlainTextEdit#CodeEditor { background: #1e1f22; border: 1px solid #34363b; border-radius: 10px; padding: 12px; color: #dfe1e5; selection-background-color: #214283; selection-color: #ffffff; font-family: "JetBrains Mono", "SFMono-Regular", "Menlo", "Consolas", monospace; font-size: 14px; }
 QTreeWidget { background: #fbfcff; alternate-background-color: #f3f6fb; border: 1px solid #e1e5ec; border-radius: 10px; padding: 8px; color: #202124; selection-background-color: #d2e3fc; selection-color: #174ea6; font-family: "Google Sans", "Segoe UI", sans-serif; font-size: 13px; }
 QTreeWidget::item { padding: 6px 5px; }
 QProgressBar { background: #e8eaed; border: 0; border-radius: 5px; height: 9px; color: transparent; }
@@ -405,6 +405,46 @@ class HTMLSyntaxHighlighter(QSyntaxHighlighter):
                 self.setFormat(match.start(), match.end() - match.start(), fmt)
 
 
+class CodeSyntaxHighlighter(QSyntaxHighlighter):
+    """Android Studio-inspired syntax colors for JSON and generated source."""
+
+    def __init__(self, document, language: str):
+        super().__init__(document)
+        palette = {
+            "keyword": "#CF8E6D", "type": "#56A8F5", "string": "#6AAB73",
+            "number": "#2AACB8", "comment": "#7A7E85", "literal": "#C77DBB",
+            "annotation": "#BBB529",
+        }
+        if language == "json":
+            rules = [
+                (r'"(?:[^"\\\\]|\\\\.)*"(?=\\s*:)', "type", True),
+                (r'"(?:[^"\\\\]|\\\\.)*"', "string", False),
+                (r'\\b(?:true|false|null)\\b', "literal", True),
+                (r'-?\\b\\d+(?:\\.\\d+)?(?:[eE][+-]?\\d+)?\\b', "number", False),
+            ]
+        else:
+            rules = [
+                (r'//.*$|/\\*.*?\\*/', "comment", False),
+                (r'"(?:[^"\\\\]|\\\\.)*"|\'(?:[^\'\\\\]|\\\\.)*\'', "string", False),
+                (r'@[A-Za-z_][\\w.]*', "annotation", False),
+                (r'\\b(?:class|public|private|protected|static|final|void|new|return|if|else|for|while|import|package|extends|implements|interface|data|val|var|fun|object|when|is|in|const|struct|typedef|include|true|false|null|NULL|sizeof)\\b', "keyword", True),
+                (r'\\b(?:String|Integer|Long|Double|Boolean|List|Object|Int|Float|Any|Unit|char|int|int64_t|bool|size_t)\\b', "type", False),
+                (r'\\b\\d+(?:\\.\\d+)?\\b', "number", False),
+            ]
+        self.rules = []
+        for pattern, color, bold in rules:
+            fmt = QTextCharFormat()
+            fmt.setForeground(QColor(palette[color]))
+            if bold:
+                fmt.setFontWeight(QFont.Weight.Bold)
+            self.rules.append((re.compile(pattern), fmt))
+
+    def highlightBlock(self, text):
+        for pattern, fmt in self.rules:
+            for match in pattern.finditer(text):
+                self.setFormat(match.start(), match.end() - match.start(), fmt)
+
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -420,6 +460,8 @@ class MainWindow(QMainWindow):
         self.text_worker: TextTaskWorker | None = None
         self.text_busy = False
         self.text_html_highlighter = None
+        self.text_input_highlighter = None
+        self.text_output_code_highlighter = None
         self.text_html_mode = False
         self.text_wrap_enabled = False
         self.text_folded_blocks = []
@@ -620,6 +662,7 @@ class MainWindow(QMainWindow):
 
         stack = QStackedWidget()
         editor = FoldablePlainTextEdit()
+        editor.setObjectName("CodeEditor")
         editor.setPlaceholderText(placeholder)
         editor.setReadOnly(read_only)
         # Avoid expensive line wrapping for long compact JSON/string payloads.
@@ -726,6 +769,10 @@ class MainWindow(QMainWindow):
         self.text_model_target.addItem("Python dataclass", "dataclass")
         self.text_model_target.addItem("Pydantic v2", "pydantic")
         self.text_model_target.addItem("TypeScript", "typescript")
+        self.text_model_target.addItem("Java", "java")
+        self.text_model_target.addItem("Kotlin", "kotlin")
+        self.text_model_target.addItem("C", "c")
+        self.text_model_target.currentIndexChanged.connect(self.update_model_output_highlighter)
         toolbar.addWidget(self.text_model_target, 1)
 
         self.text_class_label = QLabel("Tên lớp")
@@ -865,6 +912,23 @@ class MainWindow(QMainWindow):
         self.text_model_target.setVisible(is_model)
         self.text_class_label.setVisible(is_model)
         self.text_class_name.setVisible(is_model)
+        if is_model:
+            if self.text_input_highlighter is None:
+                self.text_input_highlighter = CodeSyntaxHighlighter(
+                    self.input_editor.document(), "json"
+                )
+        elif self.text_input_highlighter is not None:
+            self.text_input_highlighter.setDocument(None)
+            self.text_input_highlighter = None
+
+    def update_model_output_highlighter(self):
+        if (self.text_operation.currentData() == "json_to_model"
+                and self.output_editor.toPlainText().strip()):
+            if self.text_output_code_highlighter is not None:
+                self.text_output_code_highlighter.setDocument(None)
+            self.text_output_code_highlighter = CodeSyntaxHighlighter(
+                self.output_editor.document(), self.text_model_target.currentData()
+            )
 
     def invalidate_input_tree(self):
         self.input_tree_button.setEnabled(False)
@@ -919,12 +983,19 @@ class MainWindow(QMainWindow):
         self.output_editor.setPlainText(result["output"])
         self.text_html_mode = self.text_operation.currentData() == "string_to_html"
         self._html_folded_blocks.clear()
+        if self.text_output_code_highlighter is not None:
+            self.text_output_code_highlighter.setDocument(None)
+            self.text_output_code_highlighter = None
         if self.text_html_highlighter is not None:
             self.text_html_highlighter.setDocument(None)
             self.text_html_highlighter = None
         if self.text_html_mode:
             self.output_editor.setPlainText(self.decorate_html_output(result["output"]))
             self.text_html_highlighter = HTMLSyntaxHighlighter(self.output_editor.document())
+        elif self.text_operation.currentData() == "json_to_model":
+            self.text_output_code_highlighter = CodeSyntaxHighlighter(
+                self.output_editor.document(), self.text_model_target.currentData()
+            )
         self.text_fold_btn.setVisible(self.text_html_mode)
         self.text_unfold_btn.setVisible(self.text_html_mode)
 
