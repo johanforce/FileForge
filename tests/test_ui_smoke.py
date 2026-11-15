@@ -157,7 +157,7 @@ class UISmokeTests(unittest.TestCase):
         window.show()
         self.app.processEvents()
 
-        self.assertEqual(window.tabs.count(), 5)
+        self.assertEqual(window.tabs.count(), 6)
         window.tabs.setCurrentIndex(4)
         self.app.processEvents()
         self.assertEqual(window.mode, "compare")
@@ -202,6 +202,24 @@ class UISmokeTests(unittest.TestCase):
         self.assertIn("--request GET", output)
         self.assertIn("text/css,*/*;q=0.1", output)
         self.assertIn("a=1; b=2", output)
+        window.close()
+        window.deleteLater()
+        self.app.processEvents()
+
+
+    def test_curl_body_input_is_connected_to_generated_command(self):
+        window = MainWindow()
+        window.show()
+        self.app.processEvents()
+        window.tabs.setCurrentIndex(5)
+        window.curl_input.setPlainText(
+            "METHOD: POST\\nURL\\nhttps://example.com/api\\nHEADERS\\n"
+            "Content-Type: application/json"
+        )
+        window.curl_body_input.setPlainText('{"hello":"world"}')
+        window.convert_to_curl()
+        self.assertIn("--data-raw", window.curl_output.toPlainText())
+        self.assertIn("hello", window.curl_output.toPlainText())
         window.close()
         window.deleteLater()
         self.app.processEvents()
