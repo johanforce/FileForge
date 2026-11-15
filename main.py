@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 
@@ -756,13 +757,18 @@ class MainWindow(QMainWindow):
 
         self.text_operation = QComboBox()
         operations = [
-            ("JSON → Chuỗi", "json_to_string"),
-            ("Chuỗi → JSON", "string_to_json"),
-            ("Định dạng JSON", "format_json"),
-            ("XML → Chuỗi", "xml_to_string"),
-            ("Chuỗi → XML", "string_to_xml"),
-            ("HTML → String", "html_to_string"),
+            ("JSON Format", "format_json"),
+            ("JSON Minify", "minify_json"),
+            ("JSON → String", "json_to_string"),
+            ("String → JSON", "string_to_json"),
+            ("JSON → XML", "act_json_to_xml"),
+            ("XML → JSON", "act_xml_to_json"),
+            ("XML Format", "format_xml"),
+            ("XML Minify", "minify_xml"),
+            ("XML → String", "xml_to_string"),
+            ("String → XML", "string_to_xml"),
             ("String → HTML", "string_to_html"),
+            ("HTML → String", "html_to_string"),
             ("JSON → Model", "json_to_model"),
         ]
         for label, operation in operations:
@@ -771,6 +777,20 @@ class MainWindow(QMainWindow):
             self.update_text_model_controls
         )
         toolbar.addWidget(self.text_operation, 2)
+
+        self.text_pair_tabs = QTabWidget()
+        self.text_pair_definitions = [
+            ("JSON Format ⇄ Minify", "format_json", "minify_json"),
+            ("JSON ⇄ String", "json_to_string", "string_to_json"),
+            ("JSON ⇄ XML", "act_json_to_xml", "act_xml_to_json"),
+            ("XML Format ⇄ Minify", "format_xml", "minify_xml"),
+            ("String ⇄ HTML", "string_to_html", "html_to_string"),
+        ]
+        self.text_pair_flip = [False] * len(self.text_pair_definitions)
+        for title, _forward, _reverse in self.text_pair_definitions:
+            self.text_pair_tabs.addTab(QWidget(), title)
+        self.text_pair_tabs.currentChanged.connect(self.select_text_pair)
+        layout.addWidget(self.text_pair_tabs)
 
         self.text_swap_btn = QPushButton("⇄")
         self.text_swap_btn.setToolTip("Đảo chiều chuyển đổi và đưa kết quả hiện tại về ô đầu vào")
@@ -1005,26 +1025,24 @@ class MainWindow(QMainWindow):
 
 
     def swap_text_direction(self):
-        pairs = {
-            "json_to_string": "string_to_json",
-            "string_to_json": "json_to_string",
-            "xml_to_string": "string_to_xml",
-            "string_to_xml": "xml_to_string",
-            "html_to_string": "string_to_html",
-            "string_to_html": "html_to_string",
-        }
-        current = self.text_operation.currentData()
-        reverse = pairs.get(current)
-        if not reverse:
-            self.text_status.setText("Chức năng này không có chiều chuyển đổi ngược.")
+        index = self.text_pair_tabs.currentIndex()
+        if index < 0:
             return
+        self.text_pair_flip[index] = not self.text_pair_flip[index]
+        forward, reverse = self.text_pair_definitions[index][1:]
+        operation = reverse if self.text_pair_flip[index] else forward
         previous_output = self.output_editor.toPlainText()
-        self.text_operation.setCurrentIndex(
-            self.text_operation.findData(reverse)
-        )
+        self.text_operation.setCurrentIndex(self.text_operation.findData(operation))
         if previous_output.strip():
             self.input_editor.setPlainText(previous_output)
             self.run_text_action()
+
+    def select_text_pair(self, index):
+        if index < 0:
+            return
+        forward, reverse = self.text_pair_definitions[index][1:]
+        operation = reverse if self.text_pair_flip[index] else forward
+        self.text_operation.setCurrentIndex(self.text_operation.findData(operation))
 
     def toggle_text_wrap(self):
         self.text_wrap_enabled = not self.text_wrap_enabled
