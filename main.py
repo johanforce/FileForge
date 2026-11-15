@@ -303,6 +303,18 @@ class TextTaskWorker(QThread):
             self.failed.emit(str(exc))
 
 
+class FoldablePlainTextEdit(QPlainTextEdit):
+    foldRequested = Signal(int)
+
+    def mousePressEvent(self, event):
+        cursor = self.cursorForPosition(event.position().toPoint())
+        block = cursor.block()
+        if cursor.positionInBlock() <= 2 and block.text().lstrip().startswith(("▼ ", "▶ ")):
+            self.foldRequested.emit(block.blockNumber())
+            return
+        super().mousePressEvent(event)
+
+
 class JSONTreeWidget(QTreeWidget):
     """Lazy, paginated JSON tree that does not omit large object members."""
 
@@ -716,7 +728,7 @@ class MainWindow(QMainWindow):
         layout.addLayout(header)
 
         stack = QStackedWidget()
-        editor = QPlainTextEdit()
+        editor = FoldablePlainTextEdit()
         editor.setPlaceholderText(placeholder)
         editor.setReadOnly(read_only)
         # Avoid expensive line wrapping for long compact JSON/string payloads.
@@ -872,6 +884,7 @@ class MainWindow(QMainWindow):
         self.input_editor.textChanged.connect(self.invalidate_input_tree)
 
         self.output_editor = self.output_pane["editor"]
+        self.output_editor.foldRequested.connect(self.toggle_html_block)
         self.output_tree = self.output_pane["tree"]
         self.output_tree_button = self.output_pane["tree_button"]
 
@@ -997,6 +1010,7 @@ class MainWindow(QMainWindow):
             self.text_html_highlighter.setDocument(None)
             self.text_html_highlighter = None
         if self.text_html_mode:
+            self.output_editor.setPlainText(self.decorate_html_output(result["output"]))
             self.text_html_highlighter = HTMLSyntaxHighlighter(self.output_editor.document())
         self.text_fold_btn.setVisible(self.text_html_mode)
         self.text_unfold_btn.setVisible(self.text_html_mode)
@@ -1143,13 +1157,35 @@ class MainWindow(QMainWindow):
     def find_next_text(self):
         self.find_text_match(False)
 
-    def fold_html_output(self):
-        self._set_html_block_visibility(fold=True)
+    @staticmethod
+    def decorate_html_output(value):
+        void_tags = {"area", "base", "br", "col", "embed", "hr", "img",
+                     "input", "link", "meta", "param", "source", "track", "wbr"}
+        decorated = []
+        for line in value.splitlines():
+            stripped = line.lstrip()
+            match = re.match(r"<\s*([\w:-]+)\b", stripped)
+            if match and not stripped.startswith(("</", "<!", "<?")) and not stripped.rstrip().endswith("/>"):
+                prefix = line[:len(line) - len(stripped)]
+                if match.group(1).lower() not in void_tags:
+                    line = prefix + "▼ " + stripped
+            decorated.append(line)
+        return "\n".join(decorated)
 
-    def unfold_html_output(self):
-        self._set_html_block_visibility(fold=False)
+    def _html_matching_close(self, blocks, open_index, tag):
+        depth = 1
+        for index in range(open_index + 1, len(blocks)):
+            line = blocks[index].text()
+            if re.search(r"</\s*" + re.escape(tag) + r"\s*>", line, re.I):
+                depth -= 1
+                if depth == 0:
+                    return index
+            opened = re.search(r"<\s*" + re.escape(tag) + r"\b", line, re.I)
+            if opened and not line.strip().endswith("/>"):
+                depth += 1
+        return None
 
-    def _set_html_block_visibility(self, fold):
+    def toggle_html_block(self, block_number):
         if not self.text_html_mode:
             return
         doc = self.output_editor.document()
@@ -1158,47 +1194,73 @@ class MainWindow(QMainWindow):
         while block.isValid():
             blocks.append(block)
             block = block.next()
-        if not fold:
-            for block in blocks:
-                block.setVisible(True)
-                block.setLineCount(1)
-            doc.markContentsDirty(0, doc.characterCount())
-            self.output_editor.viewport().update()
-            self.text_status.setText("Đã mở rộng HTML")
+        if block_number >= len(blocks):
             return
-
-        stack = []
-        hidden = set()
-        void_tags = {"area", "base", "br", "col", "embed", "hr", "img",
-                     "input", "link", "meta", "param", "source", "track", "wbr"}
-        for index, block in enumerate(blocks):
-            line = block.text().strip()
-            close = re.match(r"</\s*([\w:-]+)", line)
-            opened = re.match(r"<\s*([\w:-]+)\b", line)
-            if close:
-                tag = close.group(1).lower()
-                for pos in range(len(stack) - 1, -1, -1):
-                    if stack[pos][0] == tag:
-                        open_index = stack[pos][1]
-                        del stack[pos:]
-                        if index > open_index:
-                            hidden.update(range(open_index + 1, index + 1))
-                        break
-            elif opened and not line.endswith("/>"):
-                tag = opened.group(1).lower()
-                if tag not in void_tags:
-                    stack.append((tag, index))
-        for index in hidden:
-            blocks[index].setVisible(False)
-            blocks[index].setLineCount(0)
+        block = blocks[block_number]
+        line = block.text()
+        if line.lstrip().startswith("▼ "):
+            folded = True
+            updated = line.replace("▼ ", "▶ ", 1)
+        elif line.lstrip().startswith("▶ "):
+            folded = False
+            updated = line.replace("▶ ", "▼ ", 1)
+        else:
+            return
+        cursor = self.output_editor.textCursor()
+        cursor.setPosition(block.position())
+        cursor.movePosition(cursor.MoveOperation.EndOfBlock, cursor.MoveMode.KeepAnchor)
+        cursor.insertText(updated)
+        tag_match = re.search(r"<\s*([\w:-]+)\b", updated)
+        if not tag_match:
+            return
+        end_index = self._html_matching_close(blocks, block_number, tag_match.group(1))
+        if end_index is None:
+            return
+        for index in range(block_number + 1, end_index + 1):
+            blocks[index].setVisible(not folded)
+            blocks[index].setLineCount(1 if not folded else 0)
         doc.markContentsDirty(0, doc.characterCount())
         self.output_editor.viewport().update()
-        self.text_status.setText(f"Đã thu gọn {len(hidden)} dòng HTML")
+
+    def fold_html_output(self):
+        if not self.text_html_mode:
+            return
+        doc = self.output_editor.document()
+        blocks = []
+        block = doc.firstBlock()
+        while block.isValid():
+            blocks.append(block)
+            block = block.next()
+        for index, block in enumerate(blocks):
+            if block.text().lstrip().startswith("▼ "):
+                self.toggle_html_block(index)
+        self.text_status.setText("Đã thu gọn các thẻ HTML")
+
+    def unfold_html_output(self):
+        if not self.text_html_mode:
+            return
+        doc = self.output_editor.document()
+        blocks = []
+        block = doc.firstBlock()
+        while block.isValid():
+            blocks.append(block)
+            block = block.next()
+        for index, block in enumerate(blocks):
+            if block.text().lstrip().startswith("▶ "):
+                self.toggle_html_block(index)
+        for block in blocks:
+            block.setVisible(True)
+            block.setLineCount(1)
+        doc.markContentsDirty(0, doc.characterCount())
+        self.output_editor.viewport().update()
+        self.text_status.setText("Đã mở rộng tất cả thẻ HTML")
 
     def copy_text_result(self):
         value = self.output_editor.toPlainText()
         if not value:
             return
+        if self.text_html_mode:
+            value = re.sub(r"^(\s*)[▼▶] ", r"\1", value, flags=re.MULTILINE)
         QApplication.clipboard().setText(value)
         self.text_status.setText("Đã sao chép kết quả")
 
