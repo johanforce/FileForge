@@ -772,7 +772,6 @@ class MainWindow(QMainWindow):
         self.text_model_target.addItem("Java", "java")
         self.text_model_target.addItem("Kotlin", "kotlin")
         self.text_model_target.addItem("C", "c")
-        self.text_model_target.currentIndexChanged.connect(self.update_model_output_highlighter)
         toolbar.addWidget(self.text_model_target, 1)
 
         self.text_class_label = QLabel("Tên lớp")
@@ -920,15 +919,6 @@ class MainWindow(QMainWindow):
         elif self.text_input_highlighter is not None:
             self.text_input_highlighter.setDocument(None)
             self.text_input_highlighter = None
-
-    def update_model_output_highlighter(self):
-        if (self.text_operation.currentData() == "json_to_model"
-                and self.output_editor.toPlainText().strip()):
-            if self.text_output_code_highlighter is not None:
-                self.text_output_code_highlighter.setDocument(None)
-            self.text_output_code_highlighter = CodeSyntaxHighlighter(
-                self.output_editor.document(), self.text_model_target.currentData()
-            )
 
     def invalidate_input_tree(self):
         self.input_tree_button.setEnabled(False)
