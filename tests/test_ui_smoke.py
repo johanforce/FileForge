@@ -20,7 +20,7 @@ class UISmokeTests(unittest.TestCase):
         window.show()
         self.app.processEvents()
 
-        self.assertEqual(window.tabs.count(), 4)
+        self.assertEqual(window.tabs.count(), 5)
         window.tabs.setCurrentIndex(3)
         self.app.processEvents()
         self.assertEqual(window.mode, "text")
@@ -137,6 +137,36 @@ class UISmokeTests(unittest.TestCase):
         window.output_editor.setPlainText('▼ <div>\\n  ▼ <p>hello</p>\\n  </div>')
         self.assertEqual(window._plain_text_result(), clean_html)
         self.assertNotIn('▼', window._plain_text_result())
+        window.close()
+        window.deleteLater()
+        self.app.processEvents()
+
+    def test_compare_tab_exposes_text_and_json_diff_tools(self):
+        window = MainWindow()
+        window.show()
+        self.app.processEvents()
+
+        self.assertEqual(window.tabs.count(), 5)
+        window.tabs.setCurrentIndex(4)
+        self.app.processEvents()
+        self.assertEqual(window.mode, "compare")
+        self.assertTrue(window.compare_panel.isVisible())
+        self.assertEqual(window.compare_tabs.count(), 2)
+        self.assertEqual(window.json_before["source"].count(), 2)
+        self.assertEqual(window.json_after["source"].count(), 2)
+
+        window.compare_tabs.setCurrentIndex(0)
+        window.string_before["editor"].setPlainText("old line\nkeep")
+        window.string_after["editor"].setPlainText("new line\nkeep")
+        window.run_string_compare()
+        self.assertIn("Sửa", window.string_diff_summary.text())
+
+        window.compare_tabs.setCurrentIndex(1)
+        window.load_json_diff_sample()
+        window.run_json_diff()
+        self.assertEqual(window.json_diff_table.rowCount(), 3)
+        self.assertIn("3 khác biệt", window.json_diff_summary.text())
+
         window.close()
         window.deleteLater()
         self.app.processEvents()
