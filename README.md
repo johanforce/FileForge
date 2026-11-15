@@ -37,6 +37,15 @@
 - Giao diện theo Material Design 3; vùng Input/Output dùng nền tối và tô màu cú pháp theo phong cách Android Studio cho JSON, Java, Kotlin và C; HTML có tô màu cú pháp, tách dòng thuộc tính khi có nhiều thuộc tính, click marker ▼/▶ để thu gọn từng thẻ, nút thu gọn/mở rộng tất cả, tìm kiếm, Copy và bật/tắt Wrap.\n- Phím tắt: Ctrl+Enter để chuyển đổi, Ctrl+F để tìm trong ô đang focus (Input hoặc Output), Esc để đóng tìm kiếm.
 - Hỗ trợ object lồng nhau, mảng, trường có thể thiếu và giá trị null; JSON root dạng mảng/scalar được bọc trong `root`.
 
+### Compare String / JSON Diff
+- Compare String: so sánh hai bản văn bản theo dòng, từ hoặc ký tự; tô màu phần thêm và xóa, thống kê phần thêm/xóa/sửa.
+- Tùy chọn bỏ qua chữ hoa/thường, khoảng trắng và dòng trống; có thể đổi hai bên hoặc xóa nhanh nội dung.
+- JSON Diff: parse hai tài liệu JSON và so sánh theo cấu trúc; thứ tự key và khoảng trắng/format không tạo khác biệt giả.
+- Liệt kê đường dẫn JSON cho thuộc tính/phần tử được thêm, xóa hoặc sửa; hiển thị giá trị cũ và mới, lọc theo loại thay đổi và sao chép báo cáo.
+- Chế độ mảng mặc định so sánh theo vị trí; tùy chọn bỏ qua thứ tự xem mảng như tập hợp có giữ số lần xuất hiện.
+- Mỗi ô JSON có dropdown chọn dán nội dung hoặc mở tệp `.json`; lỗi parse nêu dòng và cột.
+- So sánh chạy hoàn toàn offline trong ứng dụng, không tải dữ liệu lên máy chủ.
+
 ### Hiển thị cấu trúc và hiệu năng
 - Hai vùng đầu vào/đầu ra, có thể chuyển giữa văn bản và cây JSON.
 - Object và array có thể bung/thu theo từng cấp.
