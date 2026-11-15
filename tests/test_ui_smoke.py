@@ -31,7 +31,7 @@ class UISmokeTests(unittest.TestCase):
         window.show()
         self.app.processEvents()
 
-        self.assertEqual(window.tabs.count(), 5)
+        self.assertEqual(window.tabs.count(), 6)
         window.tabs.setCurrentIndex(3)
         self.app.processEvents()
         self.assertEqual(window.mode, "text")
@@ -178,6 +178,30 @@ class UISmokeTests(unittest.TestCase):
         self.assertEqual(window.json_diff_table.rowCount(), 3)
         self.assertIn("3 khác biệt", window.json_diff_summary.text())
 
+        window.close()
+        window.deleteLater()
+        self.app.processEvents()
+
+
+    def test_curl_tab_parses_sample_and_exposes_copy_action(self):
+        window = MainWindow()
+        window.show()
+        self.app.processEvents()
+        self.assertEqual(window.tabs.count(), 6)
+        window.tabs.setCurrentIndex(5)
+        self.app.processEvents()
+        self.assertEqual(window.mode, "curl")
+        self.assertTrue(window.curl_panel.isVisible())
+        window.curl_input.setPlainText(
+            "# REQUEST\\n## METHOD\\nGET\\n## URL\\n"
+            "https://example.com/assets/app.css\\n## HEADERS\\n"
+            "Accept:text/css,*/*;q=0.1\\nCookie:a=1; b=2"
+        )
+        window.convert_to_curl()
+        output = window.curl_output.toPlainText()
+        self.assertIn("--request GET", output)
+        self.assertIn("text/css,*/*;q=0.1", output)
+        self.assertIn("a=1; b=2", output)
         window.close()
         window.deleteLater()
         self.app.processEvents()
