@@ -108,6 +108,12 @@ def parse_http_request(
 
     for raw_line in text.splitlines():
         line = raw_line.strip()
+
+        # Once BODY/DATA starts, the remaining content is payload, not metadata.
+        # Keep blank lines and colons exactly as entered.
+        if section in {"BODY", "DATA"}:
+            body_lines.append(raw_line)
+            continue
         if not line:
             continue
 
@@ -152,9 +158,6 @@ def parse_http_request(
                     pending_header = name
             elif line.startswith("#"):
                 continue
-        elif section in {"BODY", "DATA"}:
-            body_lines.append(raw_line)
-
     if pending_header is not None:
         headers.append((pending_header, ""))
 
