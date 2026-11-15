@@ -941,8 +941,14 @@ class MainWindow(QMainWindow):
         self.text_search.hide()
         self.text_find_prev.hide()
         self.text_find_next.hide()
-        self.text_search_shortcut = QShortcut(QKeySequence("Ctrl+F"), panel)
-        self.text_search_shortcut.activated.connect(self.toggle_text_search)
+        self.text_input_search_shortcut = QShortcut(QKeySequence("Ctrl+F"), self.input_editor)
+        self.text_input_search_shortcut.activated.connect(
+            lambda: self.toggle_text_search("input")
+        )
+        self.text_output_search_shortcut = QShortcut(QKeySequence("Ctrl+F"), self.output_editor)
+        self.text_output_search_shortcut.activated.connect(
+            lambda: self.toggle_text_search("output")
+        )
         self.text_convert_shortcut = QShortcut(QKeySequence("Ctrl+Return"), panel)
         self.text_convert_shortcut.activated.connect(self.run_text_action)
         self.text_escape_shortcut = QShortcut(QKeySequence("Escape"), panel)
@@ -1126,8 +1132,9 @@ class MainWindow(QMainWindow):
         self.text_splitter.setSizes([1, 1])
         self.text_status.setText("Đã đưa hai khung về tỷ lệ 50/50")
 
-    def toggle_text_search(self):
-        visible = not self.text_search.isVisible()
+    def toggle_text_search(self, target="output"):
+        visible = not self.text_search.isVisible() or self._text_search_target != target
+        self._text_search_target = target
         self.text_search.setVisible(visible)
         self.text_find_prev.setVisible(visible)
         self.text_find_next.setVisible(visible)
@@ -1148,13 +1155,14 @@ class MainWindow(QMainWindow):
         flags = QPlainTextEdit.FindFlag()
         if backward:
             flags |= QPlainTextEdit.FindFlag.FindBackward
-        if not self.output_editor.find(query, flags):
-            cursor = self.output_editor.textCursor()
+        editor = self.input_editor if getattr(self, "_text_search_target", "output") == "input" else self.output_editor
+        if not editor.find(query, flags):
+            cursor = editor.textCursor()
             cursor.movePosition(
                 cursor.MoveOperation.End if backward else cursor.MoveOperation.Start
             )
-            self.output_editor.setTextCursor(cursor)
-            self.output_editor.find(query, flags)
+            editor.setTextCursor(cursor)
+            editor.find(query, flags)
 
     def find_next_text(self):
         self.find_text_match(False)
