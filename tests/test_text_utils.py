@@ -65,21 +65,23 @@ class TextConversionTests(unittest.TestCase):
         self.assertNotIn("\\n", output)
 
     def test_html_to_string_roundtrip_restores_real_newlines_and_tabs(self):
-        source = '<div>\\n\\tfirst\\r\\n\\tsecond</div>'.replace('\\\\n', '\\n').replace('\\\\t', '\\t').replace('\\\\r', '\\r')
+        source = "<div>\n\tfirst\r\n\tsecond</div>"
         encoded = process_text("html_to_string", source)["output"]
-        self.assertIn(r"\\n", encoded)
-        self.assertIn(r"\\t", encoded)
+        self.assertIn(r"\n", encoded)
+        self.assertIn(r"\r", encoded)
+        self.assertIn(r"\t", encoded)
 
         decoded = process_text("string_to_html", encoded, indent_size=4)["output"]
         self.assertIn("first", decoded)
         self.assertIn("second", decoded)
-        self.assertNotIn(r"\\n", decoded)
-        self.assertNotIn(r"\\t", decoded)
+        self.assertNotIn(r"\n", decoded)
+        self.assertNotIn(r"\r", decoded)
+        self.assertNotIn(r"\t", decoded)
 
     def test_string_to_html_breaks_multiple_attributes_onto_separate_lines(self):
         source = '<button id="save" class="primary">Save</button>'
         output = process_text("string_to_html", source, indent_size=4)["output"]
-        self.assertIn('<button\\n    id="save"\\n    class="primary"\\n>', output)
+        self.assertIn('<button\n    id="save"\n    class="primary"\n>', output)
         self.assertIn("    Save", output)
 
     def test_string_to_html_accepts_raw_html_and_rejects_non_html(self):
