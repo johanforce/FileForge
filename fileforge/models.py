@@ -423,8 +423,8 @@ def _render_c(schemas: list[ObjectSchema]) -> str:
             ctype, _nullable, is_array = _c_type(item.type_name)
             field_name = _c_identifier(item.json_name)
             if is_array:
-                pointer = "*" if ctype.endswith("*") else " *"
-                lines.extend([f"    {ctype}{pointer} {field_name};", f"    size_t {field_name}_count;"])
+                declaration = f"{ctype}*{field_name};" if ctype.endswith("*") else f"{ctype} *{field_name};"
+                lines.extend([f"    {declaration}", f"    size_t {field_name}_count;"])
             elif item.optional and not ctype.endswith("*"):
                 lines.append(f"    {ctype} *{field_name}; /* optional */")
             elif ctype.endswith("*"):
