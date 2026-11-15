@@ -1026,6 +1026,7 @@ class MainWindow(QMainWindow):
         self.input_editor.setReadOnly(False)
         self.text_progress.hide()
 
+        self._text_output_plain = result["output"]
         self.output_editor.setPlainText(result["output"])
         self.text_html_mode = self.text_operation.currentData() == "string_to_html"
         self._html_folded_blocks.clear()
@@ -1133,6 +1134,7 @@ class MainWindow(QMainWindow):
             return
         self.input_editor.clear()
         self.output_editor.clear()
+        self._text_output_plain = ""
         self.input_tree.clear()
         self.output_tree.clear()
         self.input_tree_button.setEnabled(False)
@@ -1313,11 +1315,13 @@ class MainWindow(QMainWindow):
         self.text_status.setText("Đã mở rộng tất cả thẻ HTML")
 
     def _plain_text_result(self):
-        """Return result text with UI-only HTML folding markers removed."""
-        value = self.output_editor.toPlainText()
+        """Return conversion output, never the UI-only HTML fold decorations."""
         if self.text_html_mode:
-            value = re.sub(r"^([ \\t]*)[▼▶] ", r"\\1", value, flags=re.MULTILINE)
-        return value
+            # Keep the formatter's actual HTML separately from the decorated
+            # QPlainTextEdit view. This is the same separation used by the
+            # original Tkinter formatter's _html_plain_text.
+            return getattr(self, "_text_output_plain", self.output_editor.toPlainText())
+        return self.output_editor.toPlainText()
 
     def copy_text_result(self):
         value = self._plain_text_result()
