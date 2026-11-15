@@ -326,6 +326,111 @@ def _render_typescript(schemas: list[ObjectSchema]) -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
+
+def _language_field_name(value: str, target: str) -> str:
+    name = _identifier(value)
+    if target in {"java", "kotlin"}:
+        parts = name.split("_")
+        name = parts[0] + "".join(part[:1].upper() + part[1:] for part in parts[1:])
+    if target == "kotlin" and name in {"class", "object", "when", "is", "in", "fun", "val", "var"}:
+        name += "_"
+    return name
+
+
+def _simple_type(type_name: str) -> tuple[str, bool]:
+    parts = type_name.split(" | ")
+    nullable = "None" in parts
+    parts = [part for part in parts if part != "None"]
+    base = parts[0] if parts else "Any"
+    if len(parts) > 1:
+        base = "float" if set(parts) <= {"int", "float"} else "Any"
+    return base, nullable
+
+
+def _java_type(type_name: str) -> str:
+    base, _ = _simple_type(type_name)
+    if base.startswith("list[") and base.endswith("]"):
+        return f"List<{_java_type(base[5:-1])}>"
+    return {"str": "String", "int": "Long", "float": "Double", "bool": "Boolean", "Any": "Object"}.get(base, base)
+
+
+def _kotlin_type(type_name: str) -> tuple[str, bool]:
+    base, nullable = _simple_type(type_name)
+    if base.startswith("list[") and base.endswith("]"):
+        inner, inner_nullable = _kotlin_type(base[5:-1])
+        rendered = f"List<{inner}{'?' if inner_nullable else ''}>"
+    else:
+        rendered = {"str": "String", "int": "Long", "float": "Double", "bool": "Boolean", "Any": "Any"}.get(base, base)
+    return rendered, nullable
+
+
+def _render_java(schemas: list[ObjectSchema]) -> str:
+    lines = ["import java.util.List;", ""]
+    for schema in reversed(schemas):
+        lines.append(f"class {schema.name} {{")
+        if not schema.fields:
+            lines.append("    // No fields")
+        for item in schema.fields:
+            field_name = _language_field_name(item.json_name, "java")
+            lines.append(f"    public {_java_type(item.type_name)} {field_name};")
+        lines.extend(["}", ""])
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def _render_kotlin(schemas: list[ObjectSchema]) -> str:
+    lines = []
+    for schema in reversed(schemas):
+        fields = []
+        for item in schema.fields:
+            field_name = _language_field_name(item.json_name, "kotlin")
+            type_name, nullable = _kotlin_type(item.type_name)
+            if nullable or item.optional:
+                type_name += "?"
+            default = " = null" if item.optional else ""
+            fields.append(f"    val {field_name}: {type_name}{default}")
+        if not fields:
+            lines.append(f"data class {schema.name}()")
+        else:
+            lines.extend([f"data class {schema.name}(", ",\n".join(fields), ")"])
+        lines.append("")
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def _c_identifier(value: str) -> str:
+    name = re.sub(r"[^A-Za-z0-9_]", "_", value)
+    if not name or name[0].isdigit():
+        name = "field_" + name
+    return name
+
+
+def _c_type(type_name: str) -> tuple[str, bool, bool]:
+    base, nullable = _simple_type(type_name)
+    is_array = base.startswith("list[") and base.endswith("]")
+    if is_array:
+        base, inner_nullable = _simple_type(base[5:-1])
+        nullable = nullable or inner_nullable
+    mapped = {"str": "char *", "int": "int64_t", "float": "double", "bool": "bool", "Any": "void *"}.get(base, base)
+    return mapped, nullable, is_array
+
+
+def _render_c(schemas: list[ObjectSchema]) -> str:
+    lines = ["#include <stdbool.h>", "#include <stddef.h>", "#include <stdint.h>", ""]
+    for schema in reversed(schemas):
+        lines.append(f"typedef struct {schema.name} {{")
+        if not schema.fields:
+            lines.append("    /* No fields */")
+        for item in schema.fields:
+            ctype, _nullable, is_array = _c_type(item.type_name)
+            field_name = _c_identifier(item.json_name)
+            if is_array:
+                lines.extend([f"    {ctype} *{field_name};", f"    size_t {field_name}_count;"])
+            elif item.optional and not ctype.endswith("*"):
+                lines.append(f"    {ctype} *{field_name}; /* optional */")
+            else:
+                lines.append(f"    {ctype} {field_name};")
+        lines.extend([f"}} {schema.name};", ""])
+    return "\n".join(lines).rstrip() + "\n"
+
 def generate_models(
     data: Any,
     class_name: str = "RootModel",
@@ -336,7 +441,7 @@ def generate_models(
         # Preserve array/scalar roots by wrapping them in a named root field.
         data = {"root": data}
 
-    if target not in {"dataclass", "pydantic", "typescript"}:
+    if target not in {"dataclass", "pydantic", "typescript", "java", "kotlin", "c"}:
         raise ValueError(f"Kiểu model không được hỗ trợ: {target}")
 
     builder = _ModelBuilder(class_name or "RootModel")
@@ -344,4 +449,10 @@ def generate_models(
 
     if target == "typescript":
         return _render_typescript(schemas)
+    if target == "java":
+        return _render_java(schemas)
+    if target == "kotlin":
+        return _render_kotlin(schemas)
+    if target == "c":
+        return _render_c(schemas)
     return _render_python(schemas, target)
