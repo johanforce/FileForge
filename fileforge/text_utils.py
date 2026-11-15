@@ -1,8 +1,10 @@
 """Text conversion operations used by the JSON/XML/HTML toolbox."""
 from __future__ import annotations
 
+import copy
 import json
 import re
+import xml.dom.minidom
 import xml.etree.ElementTree as ET
 from html.parser import HTMLParser
 from typing import Any
@@ -14,6 +16,11 @@ OPERATIONS = {
     "json_to_string",
     "string_to_json",
     "format_json",
+    "minify_json",
+    "act_json_to_xml",
+    "act_xml_to_json",
+    "format_xml",
+    "minify_xml",
     "xml_to_string",
     "string_to_xml",
     "html_to_string",
@@ -25,6 +32,97 @@ VOID_HTML_TAGS = {
     "area", "base", "br", "col", "embed", "hr", "img", "input",
     "link", "meta", "param", "source", "track", "wbr",
 }
+
+
+def _xml_elem_to_dict(elem):
+    data = {}
+    if elem.attrib:
+        data["@attributes"] = dict(elem.attrib)
+    children = list(elem)
+    if children:
+        for child in children:
+            value = _xml_elem_to_dict(child)
+            if child.tag in data:
+                if not isinstance(data[child.tag], list):
+                    data[child.tag] = [data[child.tag]]
+                data[child.tag].append(value)
+            else:
+                data[child.tag] = value
+        return data
+    text = (elem.text or "").strip()
+    if data:
+        if text:
+            data["#text"] = text
+        return data
+    return text if text else ""
+
+
+def _dict_to_xml_elem(tag, value):
+    elem = ET.Element(tag.replace(" ", "_"))
+    if isinstance(value, dict):
+        value = copy.deepcopy(value)
+        attrs = value.pop("@attributes", {})
+        for key, item in attrs.items():
+            elem.set(key, str(item))
+        text = value.pop("#text", None)
+        if text is not None:
+            elem.text = str(text)
+        for key, item in value.items():
+            if isinstance(item, list):
+                for child in item:
+                    elem.append(_dict_to_xml_elem(key, child))
+            else:
+                elem.append(_dict_to_xml_elem(key, item))
+    elif isinstance(value, list):
+        for item in value:
+            elem.append(_dict_to_xml_elem(tag, item))
+    else:
+        elem.text = str(value) if value is not None else ""
+    return elem
+
+
+def _json_to_xml(value: str, indent: int = 2) -> str:
+    data = json.loads(value)
+    if not isinstance(data, dict) or len(data) != 1:
+        data = {"root": data}
+    tag = next(iter(data))
+    root = _dict_to_xml_elem(tag, data[tag])
+    raw = ET.tostring(root, encoding="unicode")
+    pretty = xml.dom.minidom.parseString(raw).toprettyxml(indent=" " * indent)
+    lines = pretty.splitlines()
+    if lines and lines[0].startswith("<?xml"):
+        lines = lines[1:]
+    return "\n".join(lines).strip()
+
+
+def _xml_to_json(value: str, indent: int = 2):
+    root = ET.fromstring(value)
+    return json.dumps({root.tag: _xml_elem_to_dict(root)}, indent=indent, ensure_ascii=False)
+
+
+def _strip_xml_whitespace(elem):
+    if elem.text is not None and not elem.text.strip():
+        elem.text = None
+    for child in elem:
+        _strip_xml_whitespace(child)
+        if child.tail is not None and not child.tail.strip():
+            child.tail = None
+
+
+def _format_xml(value: str, indent: int = 2) -> str:
+    root = ET.fromstring(value)
+    raw = ET.tostring(root, encoding="unicode")
+    pretty = xml.dom.minidom.parseString(raw).toprettyxml(indent=" " * indent)
+    lines = pretty.splitlines()
+    if lines and lines[0].startswith("<?xml"):
+        lines = lines[1:]
+    return "\n".join(lines).strip()
+
+
+def _minify_xml(value: str) -> str:
+    root = ET.fromstring(value)
+    _strip_xml_whitespace(root)
+    return ET.tostring(root, encoding="unicode")
 
 
 def _load_xml_string(value: str) -> ET.Element:
@@ -133,7 +231,7 @@ def process_text(
     model_target: str = "dataclass",
     indent_size: int = 2,
 ) -> dict[str, Any]:
-    """Perform a single JSON/XML/HTML action and return data for the UI."""
+    """Run JSON, XML or HTML conversion operations."""
     if operation not in OPERATIONS:
         raise ValueError(f"Tác vụ không được hỗ trợ: {operation}")
     if not text.strip():
@@ -148,47 +246,69 @@ def process_text(
         "output_json_valid": False,
     }
 
-    if operation in {"json_to_string", "string_to_json", "format_json", "json_to_model"}:
-        data = json.loads(text)
+    if operation in {"format_json", "minify_json", "json_to_string", "string_to_json", "json_to_model", "act_json_to_xml"}:
+        if operation == "string_to_json":
+            raw = text.strip()
+            if len(raw) >= 2 and raw[0] == '"' and raw[-1] == '"':
+                raw = json.loads(raw)
+            elif len(raw) >= 2 and raw[0] == "'" and raw[-1] == "'":
+                raw = _decode_html_escapes(raw[1:-1])
+            data = json.loads(raw)
+        else:
+            data = json.loads(text)
         result["input_json"] = data
         result["input_json_valid"] = True
 
-        if operation == "json_to_string":
-            result["output"] = json.dumps(
-                data, ensure_ascii=False, separators=(",", ":")
-            )
+        if operation == "format_json":
+            result["output"] = json.dumps(data, ensure_ascii=False, indent=indent_size)
             result["output_json"] = data
             result["output_json_valid"] = True
             result["output_kind"] = "json"
-        elif operation in {"string_to_json", "format_json"}:
-            result["output"] = json.dumps(data, ensure_ascii=False, indent=2)
+        elif operation == "minify_json":
+            result["output"] = json.dumps(data, ensure_ascii=False, separators=(",", ":"))
             result["output_json"] = data
             result["output_json_valid"] = True
             result["output_kind"] = "json"
+        elif operation == "json_to_string":
+            inner = json.dumps(data, ensure_ascii=False)
+            escaped = (inner.replace("\\", "\\\\").replace('"', '\\"')
+                       .replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t"))
+            result["output"] = f'"{escaped}"'
+        elif operation == "string_to_json":
+            result["output"] = json.dumps(data, ensure_ascii=False, indent=indent_size)
+            result["output_json"] = data
+            result["output_json_valid"] = True
+            result["output_kind"] = "json"
+        elif operation == "act_json_to_xml":
+            result["output"] = _json_to_xml(text, indent_size)
         else:
             result["output"] = generate_models(data, class_name, model_target)
 
+    elif operation == "act_xml_to_json":
+        data = json.loads(_xml_to_json(text, indent_size))
+        result["output"] = json.dumps(data, ensure_ascii=False, indent=indent_size)
+        result["output_json"] = data
+        result["output_json_valid"] = True
+        result["output_kind"] = "json"
+
+    elif operation == "format_xml":
+        result["output"] = _format_xml(text, indent_size)
+
+    elif operation == "minify_xml":
+        result["output"] = _minify_xml(text)
+
     elif operation == "xml_to_string":
         root = ET.fromstring(text)
-        result["output"] = ET.tostring(
-            root, encoding="unicode", short_empty_elements=True
-        )
+        result["output"] = ET.tostring(root, encoding="unicode", short_empty_elements=True)
 
     elif operation == "string_to_xml":
         root = _load_xml_string(text)
-        ET.indent(root, space="  ")
-        result["output"] = ET.tostring(
-            root, encoding="unicode", short_empty_elements=True
-        )
+        ET.indent(root, space=" " * indent_size)
+        result["output"] = ET.tostring(root, encoding="unicode", short_empty_elements=True)
 
     elif operation == "html_to_string":
-        escaped = (
-            text.replace("\\", "\\\\")
-            .replace('"', '\\"')
-            .replace("\n", "\\n")
-            .replace("\r", "\\r")
-            .replace("\t", "\\t")
-        )
+        escaped = (text.replace("\\", "\\\\").replace('"', '\\"')
+                   .replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t"))
         result["output"] = f'"{escaped}"'
 
     elif operation == "string_to_html":
