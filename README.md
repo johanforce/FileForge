@@ -25,15 +25,17 @@
 - Giữ hướng ảnh theo EXIF và hồ sơ màu ICC khi có thể.
 - Tự đổi tên khi tệp đầu ra đã tồn tại; bỏ qua ảnh lỗi và tiếp tục batch.
 
-### Công cụ JSON / XML
-- JSON → Chuỗi: phân tích JSON và xuất lại dạng compact, không thừa khoảng trắng.
-- Chuỗi → JSON: phân tích JSON text và hiển thị lại dạng dễ đọc.
-- Định dạng JSON: chuẩn hóa thụt lề 2 spaces, giữ Unicode.
-- XML → Chuỗi: kiểm tra XML hợp lệ và xuất dạng compact.
-- Chuỗi → XML: chấp nhận XML thô hoặc XML nằm trong một JSON string, sau đó định dạng dễ đọc.\n- HTML → String: escape dấu gạch chéo ngược, dấu nháy kép, xuống dòng, carriage return và tab; bọc kết quả trong JSON string.\n- String → HTML: giải mã JSON string hoặc nhận HTML thô, kiểm tra thẻ HTML và định dạng lại với thụt lề 2 spaces.
+### Công cụ JSON / XML / HTML
+- JSON Format ⇄ Minify: định dạng dễ đọc hoặc loại bỏ khoảng trắng thừa.
+- JSON ⇄ String: chuyển JSON thành chuỗi đã escape và giải mã ngược lại.
+- JSON ⇄ XML: chuyển đổi hai chiều, hỗ trợ thuộc tính XML qua `@attributes`, nội dung hỗn hợp qua `#text` và các phần tử lặp thành mảng.
+- XML Format ⇄ Minify: định dạng hoặc rút gọn XML.
+- String ⇄ HTML: escape/unescape dấu gạch chéo ngược, dấu nháy kép, xuống dòng, carriage return và tab; HTML được định dạng theo cấu trúc thẻ.
+- XML ⇄ String: kiểm tra XML và chuyển đổi giữa XML thô với nội dung chuỗi.
 - JSON → Model: sinh Python dataclass, Pydantic v2 hoặc TypeScript interface.
-- Hỗ trợ object lồng nhau, mảng, trường có thể thiếu và giá trị null.
-- JSON gốc dạng mảng/scalar được bọc trong trường root.
+- Các cặp chuyển đổi có tab riêng và nút đảo chiều; hỗ trợ Indent 2/4 spaces.
+- HTML có tô màu cú pháp, tách dòng thuộc tính khi có nhiều thuộc tính, tìm kiếm, thu gọn/mở rộng, Copy và bật/tắt Wrap.
+- Hỗ trợ object lồng nhau, mảng, trường có thể thiếu và giá trị null; JSON root dạng mảng/scalar được bọc trong `root`.
 
 ### Hiển thị cấu trúc và hiệu năng
 - Hai vùng đầu vào/đầu ra, có thể chuyển giữa văn bản và cây JSON.
