@@ -107,6 +107,18 @@ class UISmokeTests(unittest.TestCase):
         window.deleteLater()
         self.app.processEvents()
 
+    def test_html_output_to_input_uses_clean_html_not_fold_markers(self):
+        window = MainWindow()
+        clean_html = '<div>\\n  <p>hello</p>\\n</div>'
+        window.text_html_mode = True
+        window._text_output_plain = clean_html
+        window.output_editor.setPlainText('▼ <div>\\n  ▼ <p>hello</p>\\n  </div>')
+        self.assertEqual(window._plain_text_result(), clean_html)
+        self.assertNotIn('▼', window._plain_text_result())
+        window.close()
+        window.deleteLater()
+        self.app.processEvents()
+
     def test_text_conversion_runs_in_worker_thread(self):
         source = '{"payload":"' + ("x" * 150000) + '"}'
         worker = TextTaskWorker("format_json", source, "RootModel", "dataclass")
