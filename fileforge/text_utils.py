@@ -41,8 +41,25 @@ def _load_xml_string(value: str) -> ET.Element:
     return ET.fromstring(raw)
 
 
+def _decode_html_escapes(value: str) -> str:
+    """Decode String escapes into real whitespace and literal characters."""
+    out: list[str] = []
+    i = 0
+    mapping = {"n": "\n", "r": "\r", "t": "\t", '"': '"', "'": "'", "\\": "\\"}
+    while i < len(value):
+        if value[i] == "\\" && i + 1 < len(value):
+            nxt = value[i + 1]
+            if nxt in mapping:
+                out.append(mapping[nxt])
+                i += 2
+                continue
+        out.append(value[i])
+        i += 1
+    return "".join(out)
+
+
 def _unwrap_html_string(value: str) -> str:
-    """Decode a JSON-quoted HTML string, or accept raw HTML unchanged."""
+    """Unwrap JSON/single-quoted strings and decode escaped whitespace."""
     raw = value.strip()
     if len(raw) >= 2 and raw[0] == '"' and raw[-1] == '"':
         decoded = json.loads(raw)
@@ -50,65 +67,64 @@ def _unwrap_html_string(value: str) -> str:
             raise ValueError("Chuỗi đầu vào phải chứa nội dung HTML.")
         return decoded
     if len(raw) >= 2 and raw[0] == "'" and raw[-1] == "'":
-        # Accept the single-quoted form used by some editors.
-        inner = raw[1:-1]
-        return inner.replace("\\n", "\n").replace("\\r", "\r").replace("\\t", "\t").replace("\\'", "'").replace("\\\\", "\\")
-    return raw
-
-
-class _HTMLPrettyPrinter(HTMLParser):
-    """Small fragment formatter; it does not attempt browser DOM correction."""
-
-    def __init__(self, indent_size: int = 2):
-        super().__init__(convert_charrefs=False)
-        self.indent_size = indent_size
-        self.depth = 0
-        self.lines: list[str] = []
-
-    def _line(self, value: str, depth: int | None = None):
-        level = self.depth if depth is None else depth
-        self.lines.append(" " * (self.indent_size * max(level, 0)) + value)
-
-    def handle_starttag(self, tag: str, attrs):
-        raw = self.get_starttag_text() or f"<{tag}>"
-        self._line(raw)
-        if tag.lower() not in VOID_HTML_TAGS:
-            self.depth += 1
-
-    def handle_startendtag(self, tag: str, attrs):
-        self._line(self.get_starttag_text() or f"<{tag} />")
-
-    def handle_endtag(self, tag: str):
-        if tag.lower() not in VOID_HTML_TAGS:
-            self.depth = max(0, self.depth - 1)
-        self._line(f"</{tag}>")
-
-    def handle_data(self, data: str):
-        value = data.strip()
-        if value:
-            self._line(value)
-
-    def handle_entityref(self, name: str):
-        self._line(f"&{name};")
-
-    def handle_charref(self, name: str):
-        self._line(f"&#{name};")
-
-    def handle_comment(self, data: str):
-        self._line(f"<!--{data}-->")
-
-    def handle_decl(self, decl: str):
-        self._line(f"<!{decl}>")
-
-    def unknown_decl(self, data: str):
-        self._line(f"<![{data}]>")
+        raw = raw[1:-1]
+    return _decode_html_escapes(raw)
 
 
 def _pretty_html(value: str, indent_size: int = 2) -> str:
-    parser = _HTMLPrettyPrinter(indent_size)
-    parser.feed(value)
-    parser.close()
-    return "\n".join(parser.lines)
+    """Format HTML fragments like formatter(1).py, including multiline attrs."""
+    token_re = re.compile(
+        r"(<!--.*?-->)|(<!DOCTYPE[^>]*>)|(<\\s*/\\s*[\\w:-]+\\s*>)"
+        r"|(<\\s*[\\w:-]+(?:\\s[^>]*)?\\s*/>)"
+        r"|(<\\s*[\\w:-]+(?:\\s[^>]*)?>)|([^<]+)",
+        re.DOTALL | re.IGNORECASE,
+    )
+    attr_re = re.compile(
+        r"""([\\w:-]+)\\s*(=)\\s*("(?:[^"\\\\]|\\\\.)*"|'(?:[^'\\\\]|\\\\.)*')|([\\w:-]+)""",
+        re.DOTALL,
+    )
+    lines: list[str] = []
+    depth = 0
+    pad = " " * indent_size
+
+    for match in token_re.finditer(value):
+        comment, doctype, close, selfclose, opentag, text = match.groups()
+        if comment:
+            lines.append(pad * depth + comment.strip())
+        elif doctype:
+            lines.append(pad * depth + doctype.strip())
+        elif close:
+            depth = max(0, depth - 1)
+            lines.append(pad * depth + close.strip())
+        elif selfclose or opentag:
+            raw = (selfclose or opentag).strip()
+            is_self = selfclose is not None
+            inner = raw[1:-2].rstrip() if is_self else raw[1:-1].rstrip()
+            tag_match = re.match(r"\\s*([\\w:-]+)(.*)", inner, re.DOTALL)
+            if not tag_match:
+                lines.append(pad * depth + raw)
+                continue
+            tag_name, rest = tag_match.groups()
+            attrs = []
+            for attr in attr_re.finditer(rest):
+                if attr.group(1):
+                    attrs.append(f"{attr.group(1)}{attr.group(2)}{attr.group(3)}")
+                elif attr.group(4):
+                    attrs.append(attr.group(4))
+            if len(attrs) >= 2:
+                lines.append(pad * depth + f"<{tag_name}")
+                lines.extend(pad * (depth + 1) + attr for attr in attrs)
+                lines.append(pad * depth + ("/>" if is_self else ">"))
+            else:
+                lines.append(pad * depth + raw)
+            if not is_self and tag_name.lower() not in VOID_HTML_TAGS:
+                depth += 1
+        elif text:
+            stripped = text.strip()
+            if stripped:
+                lines.append(pad * depth + stripped)
+    return "\n".join(lines)
+
 
 
 def process_text(
@@ -116,6 +132,7 @@ def process_text(
     text: str,
     class_name: str = "RootModel",
     model_target: str = "dataclass",
+    indent_size: int = 2,
 ) -> dict[str, Any]:
     """Perform a single JSON/XML/HTML action and return data for the UI."""
     if operation not in OPERATIONS:
@@ -179,6 +196,6 @@ def process_text(
         html = _unwrap_html_string(text)
         if not re.search(r"<[a-zA-Z!]", html):
             raise ValueError("Không tìm thấy thẻ HTML trong chuỗi.")
-        result["output"] = _pretty_html(html, indent_size=2)
+        result["output"] = _pretty_html(html, indent_size=indent_size)
 
     return result
