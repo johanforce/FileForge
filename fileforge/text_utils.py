@@ -217,9 +217,10 @@ def _pretty_html(value: str, indent_size: int = 2) -> str:
             if not is_self and tag_name.lower() not in VOID_HTML_TAGS:
                 depth += 1
         elif text:
-            stripped = text.strip()
-            if stripped:
-                lines.append(pad * depth + stripped)
+            for text_line in text.splitlines() or [text]:
+                stripped = text_line.strip()
+                if stripped:
+                    lines.append(pad * depth + stripped)
     return "\n".join(lines)
 
 
