@@ -426,10 +426,10 @@ class CodeSyntaxHighlighter(QSyntaxHighlighter):
             rules = [
                 (r'//.*$|/\*.*?\*/', "comment", False),
                 (r'"(?:[^"\\]|\\.)*"|\'(?:[^\'\\]|\\.)*\'', "string", False),
-                (r'@[A-Za-z_][\\w.]*', "annotation", False),
-                (r'\\b(?:class|public|private|protected|static|final|void|new|return|if|else|for|while|import|package|extends|implements|interface|data|val|var|fun|object|when|is|in|const|struct|typedef|include|true|false|null|NULL|sizeof)\\b', "keyword", True),
-                (r'\\b(?:String|Integer|Long|Double|Boolean|List|Object|Int|Float|Any|Unit|char|int|int64_t|bool|size_t)\\b', "type", False),
-                (r'\\b\\d+(?:\\.\\d+)?\\b', "number", False),
+                (r'@[A-Za-z_][\w.]*', "annotation", False),
+                (r'\b(?:class|public|private|protected|static|final|void|new|return|if|else|for|while|import|package|extends|implements|interface|data|val|var|fun|object|when|is|in|const|struct|typedef|include|true|false|null|NULL|sizeof)\b', "keyword", True),
+                (r'\b(?:String|Integer|Long|Double|Boolean|List|Object|Int|Float|Any|Unit|char|int|int64_t|bool|size_t)\b', "type", False),
+                (r'\b\d+(?:\.\d+)?\b', "number", False),
             ]
         self.rules = []
         for pattern, color, bold in rules:
