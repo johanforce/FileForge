@@ -5,7 +5,7 @@ from fileforge.compare import compare_json, compare_json_values, compare_text
 
 class TextDiffTests(unittest.TestCase):
     def test_line_diff_highlights_added_and_removed_lines(self):
-        result = compare_text("alpha\\nbeta\\n", "alpha\\ngamma\\n", "line")
+        result = compare_text("alpha\nbeta\n", "alpha\ngamma\n", "line")
         self.assertIn('class="diff-removed"', result["before_html"])
         self.assertIn('class="diff-added"', result["after_html"])
         self.assertEqual(result["removed"], 1)
@@ -21,8 +21,8 @@ class TextDiffTests(unittest.TestCase):
 
     def test_ignore_case_whitespace_and_blank_lines(self):
         result = compare_text(
-            "Hello  World\\n\\n",
-            "hello World\\n",
+            "Hello  World\n\n",
+            "hello World\n",
             "line",
             ignore_case=True,
             ignore_whitespace=True,
@@ -65,7 +65,9 @@ class JsonDiffTests(unittest.TestCase):
         duplicate_change = compare_json_values(
             [1, 2, 2], [1, 2, 3], ignore_array_order=True
         )
-        self.assertEqual([item["kind"] for item in duplicate_change], ["removed", "added"])
+        self.assertEqual(
+            [item["kind"] for item in duplicate_change], ["removed", "added"]
+        )
 
     def test_array_nested_paths_and_unusual_object_keys(self):
         result = compare_json_values(
@@ -75,8 +77,10 @@ class JsonDiffTests(unittest.TestCase):
         self.assertEqual(result[0]["path"], '$.items[0]["odd key"]')
 
     def test_invalid_json_reports_line_and_column(self):
-        with self.assertRaisesRegex(ValueError, r"JSON bên Trước không hợp lệ \\(dòng 2, cột"):
-            compare_json('{"x":\\n}', '{"x":1}')
+        with self.assertRaisesRegex(
+            ValueError, r"JSON bên Trước không hợp lệ \(dòng 2, cột"
+        ):
+            compare_json('{"x":\n}', '{"x":1}')
 
 
 if __name__ == "__main__":
