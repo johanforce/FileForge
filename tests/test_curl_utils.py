@@ -1,11 +1,10 @@
 import unittest
 
-from fileforge.curl_utils import parse_http_request
+from fileforge.curl_utils import build_curl_command, parse_http_request
 
 
 class CurlConversionTests(unittest.TestCase):
-    def test_parses_markdown_request_with_headers_and_cookie(self):
-        source = """**HTTP/1.1GET www.youtube.com**
+    SAMPLE = """**HTTP/1.1GET www . youtube . com**
 
 # REQUEST
 
@@ -15,46 +14,70 @@ class CurlConversionTests(unittest.TestCase):
 
 ## URL
 
-[https://www.youtube.com/s/desktop/style.css](https://www.youtube.com/s/desktop/style.css)
+[https://www.youtube.com/s/desktop/bb2198ae/cssbin/www-onepick.css](https://www.youtube.com/s/desktop/bb2198ae/cssbin/www-onepick.css)
 
 ## HEADERS
 
-Accept:text/css,*/*;q=0.1
+Accept:text/css,\\* /\\*;q=0.1
+
+Accept-Encoding:gzip, deflate, br, zstd
 
 Cookie:__Secure-YNID=abc; GPS=1; YSC=xyz
 
-User-Agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64)
+Host:www\\.youtube\\.com
+
+Referer:[https://www.youtube.com/?app=desktop&hl=vi](https://www.youtube.com/?app=desktop\\&hl=vi)
+
+sec-ch-ua:"Not-A.Brand";v="99"; "Google Chrome";v="157"
+
+X-Browser-Validation:abc==
 """
-        result = parse_http_request(source)
+
+    def test_parses_sample_markdown_and_preserves_headers(self):
+        # The escaped asterisks/dots/ampersand emulate Markdown-rendered copy.
+        result = parse_http_request(self.SAMPLE)
         self.assertEqual(result["method"], "GET")
-        self.assertEqual(result["url"], "https://www.youtube.com/s/desktop/style.css")
-        self.assertEqual(result["headers"][0], ("Accept", "text/css,*/*;q=0.1"))
-        self.assertEqual(result["headers"][1], ("Cookie", "__Secure-YNID=abc; GPS=1; YSC=xyz"))
-        self.assertIn("--request GET", result["curl"])
-        self.assertIn("--header", result["curl"])
-        self.assertIn("GPS=1", result["curl"])
+        self.assertEqual(result["url"], "https://www.youtube.com/s/desktop/bb2198ae/cssbin/www-onepick.css")
+        values = dict(result["headers"])
+        self.assertEqual(values["Accept"], "text/css,* /*;q=0.1")
+        self.assertEqual(values["Cookie"], "__Secure-YNID=abc; GPS=1; YSC=xyz")
+        self.assertEqual(values["Host"], "www.youtube.com")
+        self.assertEqual(values["Referer"], "https://www.youtube.com/?app=desktop&hl=vi")
+        self.assertEqual(values["sec-ch-ua"], '"Not-A.Brand";v="99"; "Google Chrome";v="157"')
+        self.assertIn("X-Browser-Validation: abc==", result["curl"])
 
-    def test_accepts_special_spaces_and_markdown_escaped_underscores(self):
-        source = """# REQUEST
-## METHOD
-POST
-## URL
-https://example.com/api
-## HEADERS
-X-Test: value
-X-Token: abc\\_def
-"""
-        result = parse_http_request(source)
-        self.assertEqual(result["headers"], [("X-Test", "value"), ("X-Token", "abc_def")])
+    def test_preserves_accept_wildcard_without_markdown_emphasis_stripping(self):
+        source = "# REQUEST\n## METHOD\nGET\n## URL\nhttps://example.com\n## HEADERS\nAccept:text/css,*/*;q=0.1"
+        self.assertEqual(dict(parse_http_request(source)["headers"])["Accept"], "text/css,*/*;q=0.1")
 
-    def test_rejects_missing_url(self):
+    def test_handles_special_spaces_and_escaped_punctuation(self):
+        source = "# REQUEST\n## METHOD\nPOST\n## URL\nhttps://example.com/api\n## HEADERS\nX-Test: a\\_b\\*c\\&d"
+        self.assertEqual(dict(parse_http_request(source)["headers"])["X-Test"], "a_b*c&d")
+
+    def test_rejects_missing_url_and_invalid_scheme(self):
         with self.assertRaisesRegex(ValueError, "URL"):
             parse_http_request("# REQUEST\n## METHOD\nGET\n## HEADERS\nAccept: */*")
+        with self.assertRaisesRegex(ValueError, "http"):
+            parse_http_request("# REQUEST\n## METHOD\nGET\n## URL\nftp://example.com")
 
     def test_accepts_raw_http_request(self):
         result = parse_http_request("GET /api/items HTTP/1.1\nHost: example.com\nAccept: application/json\n\n")
         self.assertEqual(result["url"], "https://example.com/api/items")
         self.assertIn("--request GET", result["curl"])
+
+    def test_posix_quotes_special_values(self):
+        command = build_curl_command("POST", "https://example.com/a?x=1&y=2", [("X-Test", "a'b $x; c")], "posix")
+        self.assertIn("'X-Test: a'\"'\"'b $x; c'", command)
+        self.assertTrue(command.startswith("curl "))
+
+    def test_powershell_quotes_special_values_and_uses_curl_exe(self):
+        command = build_curl_command("POST", "https://example.com/a?x=1&y=2", [("X-Test", "a'b $x; c")], "powershell")
+        self.assertTrue(command.startswith("curl.exe "))
+        self.assertIn("'X-Test: a''b $x; c'", command)
+
+    def test_rejects_unsupported_shell(self):
+        with self.assertRaisesRegex(ValueError, "Shell"):
+            build_curl_command("GET", "https://example.com", [], "cmd")
 
 
 if __name__ == "__main__":
