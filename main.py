@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 
 from PySide6.QtCore import QFileInfo, Qt, QThread, QUrl, Signal
-from PySide6.QtGui import QDesktopServices, QDragEnterEvent, QDropEvent, QFont, QColor, QSyntaxHighlighter, QTextCharFormat
+from PySide6.QtGui import QDesktopServices, QDragEnterEvent, QDropEvent, QFont, QColor, QSyntaxHighlighter, QTextCharFormat, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
     QAbstractItemView,
@@ -838,6 +838,10 @@ class MainWindow(QMainWindow):
         self.text_execute_btn.clicked.connect(self.run_text_action)
         toolbar.addWidget(self.text_execute_btn)
 
+        self.text_clear_btn = QPushButton("Clear")
+        self.text_clear_btn.clicked.connect(self.clear_text_all)
+        toolbar.addWidget(self.text_clear_btn)
+
         layout.addLayout(toolbar)
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
@@ -897,10 +901,18 @@ class MainWindow(QMainWindow):
         self.text_unfold_btn.clicked.connect(self.unfold_html_output)
         footer.addWidget(self.text_unfold_btn)
 
-        self.text_copy_btn = QPushButton("Sao chép kết quả")
+        self.text_copy_input_btn = QPushButton("Copy đầu vào")
+        self.text_copy_input_btn.clicked.connect(self.copy_text_input)
+        footer.addWidget(self.text_copy_input_btn)
+
+        self.text_copy_btn = QPushButton("Copy kết quả")
         self.text_copy_btn.setEnabled(False)
         self.text_copy_btn.clicked.connect(self.copy_text_result)
         footer.addWidget(self.text_copy_btn)
+
+        self.text_reset_btn = QPushButton("Reset 50/50")
+        self.text_reset_btn.clicked.connect(self.reset_text_splitter)
+        footer.addWidget(self.text_reset_btn)
 
         self.text_progress = QProgressBar()
         self.text_progress.setRange(0, 0)
@@ -911,6 +923,15 @@ class MainWindow(QMainWindow):
         layout.addLayout(footer)
         self.text_fold_btn.hide()
         self.text_unfold_btn.hide()
+        self.text_search.hide()
+        self.text_find_prev.hide()
+        self.text_find_next.hide()
+        self.text_search_shortcut = QShortcut(QKeySequence("Ctrl+F"), self.text_panel)
+        self.text_search_shortcut.activated.connect(self.toggle_text_search)
+        self.text_convert_shortcut = QShortcut(QKeySequence("Ctrl+Return"), self.text_panel)
+        self.text_convert_shortcut.activated.connect(self.run_text_action)
+        self.text_escape_shortcut = QShortcut(QKeySequence("Escape"), self.text_panel)
+        self.text_escape_shortcut.activated.connect(self.close_text_search)
         self.update_text_model_controls()
         return panel
 
@@ -1063,6 +1084,46 @@ class MainWindow(QMainWindow):
             Qt.Orientation.Vertical if vertical else Qt.Orientation.Horizontal
         )
         self.text_layout_btn.setText("Xếp ngang" if vertical else "Xếp dọc")
+
+    def copy_text_input(self):
+        value = self.input_editor.toPlainText()
+        if value:
+            QApplication.clipboard().setText(value)
+            self.text_status.setText("Đã sao chép nội dung đầu vào")
+
+    def clear_text_all(self):
+        if self.text_busy:
+            return
+        self.input_editor.clear()
+        self.output_editor.clear()
+        self.input_tree.clear()
+        self.output_tree.clear()
+        self.input_tree_button.setEnabled(False)
+        self.output_tree_button.setEnabled(False)
+        self.text_copy_btn.setEnabled(False)
+        self.text_html_mode = False
+        self.text_fold_btn.hide()
+        self.text_unfold_btn.hide()
+        self.text_status.setText("Đã xóa nội dung")
+
+    def reset_text_splitter(self):
+        self.text_splitter.setSizes([1, 1])
+        self.text_status.setText("Đã đưa hai khung về tỷ lệ 50/50")
+
+    def toggle_text_search(self):
+        visible = not self.text_search.isVisible()
+        self.text_search.setVisible(visible)
+        self.text_find_prev.setVisible(visible)
+        self.text_find_next.setVisible(visible)
+        if visible:
+            self.text_search.setFocus()
+            self.text_search.selectAll()
+
+    def close_text_search(self):
+        self.text_search.hide()
+        self.text_find_prev.hide()
+        self.text_find_next.hide()
+        self.output_editor.setFocus()
 
     def find_text_match(self, backward=False):
         query = self.text_search.text()
