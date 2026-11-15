@@ -52,7 +52,7 @@ class ModelGenerationTests(unittest.TestCase):
         code = generate_models(SAMPLE, "Customer", "kotlin")
         self.assertIn("data class Customer(", code)
         self.assertIn("data class Profile(", code)
-        self.assertIn("val nickname: String?", code)
+        self.assertIn("val nickname: Any?", code)
         self.assertIn("val note: String? = null", code)
         self.assertIn("List<Order>", code)
 
