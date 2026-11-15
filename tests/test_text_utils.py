@@ -4,11 +4,13 @@ from fileforge.text_utils import process_text
 
 
 class TextConversionTests(unittest.TestCase):
-    def test_json_to_compact_string(self):
-        result = process_text("json_to_string", '{"name": "An", "count": 2}')
-        self.assertEqual(result["output"], '{"name":"An","count":2}')
-        self.assertTrue(result["input_json_valid"])
-        self.assertTrue(result["output_json_valid"])
+    def test_json_to_quoted_string_and_back(self):
+        source = '{"name": "An", "count": 2}'
+        encoded = process_text("json_to_string", source)["output"]
+        self.assertTrue(encoded.startswith('"') and encoded.endswith('"'))
+        decoded = process_text("string_to_json", encoded)
+        self.assertEqual(decoded["output_json"], {"name": "An", "count": 2})
+        self.assertIn('\\n  "name"', decoded["output"])
 
     def test_string_to_json_and_format(self):
         source = '{"name":"An","items":[1,2]}'
@@ -40,6 +42,27 @@ class TextConversionTests(unittest.TestCase):
         self.assertIn('    FileForge', decoded)
         self.assertIn('  </span>', decoded)
         self.assertIn('</div>', decoded)
+
+    def test_json_xml_and_xml_format_minify_pairs(self):
+        source = '{"root":{"@attributes":{"id":"x"},"name":"FileForge","item":["a","b"]}}'
+        xml = process_text("act_json_to_xml", source, indent_size=4)["output"]
+        self.assertIn('id="x"', xml)
+        self.assertIn('    <name>FileForge</name>', xml)
+        converted = process_text("act_xml_to_json", xml)
+        self.assertEqual(converted["output_json"]["root"]["item"], ["a", "b"])
+
+        pretty = process_text("format_xml", "<root><a>1</a><b>2</b></root>", indent_size=4)["output"]
+        self.assertIn('    <a>1</a>', pretty)
+        compact = process_text("minify_xml", pretty)["output"]
+        self.assertEqual(compact, "<root><a>1</a><b>2</b></root>")
+
+    def test_string_to_html_decodes_newlines_tabs_and_indent_choice(self):
+        encoded = '"<div>first\\nsecond\\tvalue</div>"'
+        output = process_text("string_to_html", encoded, indent_size=4)["output"]
+        self.assertIn("    first", output)
+        self.assertIn("    second", output)
+        self.assertIn("second\tvalue", output)
+        self.assertNotIn("\\n", output)
 
     def test_string_to_html_accepts_raw_html_and_rejects_non_html(self):
         raw = process_text("string_to_html", "<main><p>Hi</p></main>")["output"]
