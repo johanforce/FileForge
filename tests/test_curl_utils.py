@@ -78,6 +78,33 @@ X-Browser-Validation:abc==
         self.assertTrue(result["curl"].startswith("curl.exe "))
         self.assertIn("--request POST", result["curl"])
 
+
+    def test_header_value_with_colon_on_next_line_is_kept_verbatim(self):
+        source = r"""**METHOD: POST**\
+**URL**\
+**https\://example.com/api**\
+**HEADERS**\
+**x-user-sub:**\
+**Bdju1YjhsGcuN32KddsYjw:1655797628**\
+**X-Trace:**\
+**trace:part:three**"""
+        result = parse_http_request(source)
+        headers = dict(result["headers"])
+        self.assertEqual(headers["x-user-sub"], "Bdju1YjhsGcuN32KddsYjw:1655797628")
+        self.assertEqual(headers["X-Trace"], "trace:part:three")
+
+    def test_request_body_input_is_added_as_data_raw(self):
+        source = """METHOD: POST
+URL
+https://example.com/api
+HEADERS
+Content-Type: application/json"""
+        body = '{"prompt":"hello","count":2}'
+        result = parse_http_request(source, body_override=body)
+        self.assertEqual(result["body"], body)
+        self.assertIn("--data-raw", result["curl"])
+        self.assertIn("hello", result["curl"])
+
     def test_preserves_accept_wildcard_without_markdown_emphasis_stripping(self):
         source = "# REQUEST\n## METHOD\nGET\n## URL\nhttps://example.com\n## HEADERS\nAccept:text/css,*/*;q=0.1"
         self.assertEqual(dict(parse_http_request(source)["headers"])["Accept"], "text/css,*/*;q=0.1")
