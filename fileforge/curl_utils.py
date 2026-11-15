@@ -1,6 +1,7 @@
 """Parse copied HTTP request text into a reproducible cURL command."""
 from __future__ import annotations
 
+import os
 import re
 import shlex
 from urllib.parse import urlsplit
@@ -10,11 +11,13 @@ _SECTION = re.compile(r"^\s*#{1,6}\s*(METHOD|URL|HEADERS)\s*:?[ \t]*$", re.I)
 
 
 def _clean_text(value: str) -> str:
+    """Normalize invisible spaces and Markdown-escaped punctuation without damaging header data."""
     value = _ZERO_WIDTH.sub("", value)
     value = value.replace("\u00a0", " ").replace("\u202f", " ").replace("\u2009", " ")
     value = value.replace("\r\n", "\n").replace("\r", "\n")
-    value = re.sub(r"\*{1,3}([^*]+)\*{1,3}", r"\1", value)
-    value = re.sub(r"\\([_*\[\]])", r"\1", value)
+    # Markdown escapes punctuation such as \*, \_, \. and \&. Do not strip
+    # emphasis markers globally: a literal Accept value commonly contains */*.
+    value = re.sub(r"\\([^\w\s])", r"\1", value)
     return value.strip()
 
 
@@ -28,6 +31,33 @@ def _extract_url(value: str) -> str:
         if plain:
             value = plain.group(0)
     return value.strip().rstrip(".,;)")
+
+
+def _shell_quote(value: str, shell: str) -> str:
+    if shell == "powershell":
+        # PowerShell escapes a single quote inside a single-quoted string by doubling it.
+        return "'" + value.replace("'", "''") + "'"
+    return shlex.quote(value)
+
+
+def build_curl_command(
+    method: str,
+    url: str,
+    headers: list[tuple[str, str]],
+    shell: str | None = None,
+) -> str:
+    """Build cURL for POSIX shells or PowerShell (not legacy cmd.exe)."""
+    if shell is None:
+        shell = "powershell" if os.name == "nt" else "posix"
+    if shell not in {"posix", "powershell"}:
+        raise ValueError("Shell chỉ hỗ trợ posix hoặc powershell.")
+
+    executable = "curl.exe" if shell == "powershell" else "curl"
+    quote = lambda item: _shell_quote(item, shell)
+    parts = [executable, "--location", "--request", method, quote(url)]
+    for name, header_value in headers:
+        parts.extend(["--header", quote(f"{name}: {header_value}")])
+    return " ".join(parts)
 
 
 def parse_http_request(value: str) -> dict:
@@ -66,9 +96,13 @@ def parse_http_request(value: str) -> dict:
             if name and re.fullmatch(r"[!#$%&'*+.^_|~0-9A-Za-z-]+", name):
                 headers.append((name, header_value.strip()))
     else:
+        # Raw HTTP request, e.g. GET /path HTTP/1.1 followed by Host and headers.
         lines = text.splitlines()
-        request_index = next((i for i, line in enumerate(lines)
-                              if re.match(r"^[A-Z]+\s+\S+\s+HTTP/\d", line.strip(), re.I)), None)
+        request_index = next(
+            (i for i, line in enumerate(lines)
+             if re.match(r"^[A-Z]+\s+\S+\s+HTTP/\d", line.strip(), re.I)),
+            None,
+        )
         if request_index is not None:
             parts = lines[request_index].split()
             method, target = parts[0].upper(), parts[1]
@@ -94,7 +128,9 @@ def parse_http_request(value: str) -> dict:
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
         raise ValueError("URL phải bắt đầu bằng http:// hoặc https://.")
 
-    parts = ["curl", "--location", "--request", method, shlex.quote(url)]
-    for name, header_value in headers:
-        parts.extend(["--header", shlex.quote(f"{name}: {header_value}")])
-    return {"method": method, "url": url, "headers": headers, "curl": " ".join(parts)}
+    return {
+        "method": method,
+        "url": url,
+        "headers": headers,
+        "curl": build_curl_command(method, url, headers),
+    }
