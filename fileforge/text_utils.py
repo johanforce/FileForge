@@ -308,8 +308,11 @@ def process_text(
         result["output"] = ET.tostring(root, encoding="unicode", short_empty_elements=True)
 
     elif operation == "html_to_string":
-        escaped = (text.replace("\\", "\\\\").replace('"', '\\"')
-                   .replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t"))
+        # Compact output: strip real and literal newline sequences instead of emitting \\n.
+        compact = (text.replace("\\r\\n", "").replace("\\n", "").replace("\\r", "")
+                   .replace("\r\\n", "").replace("\n", "").replace("\r", ""))
+        escaped = (compact.replace("\\", "\\\\").replace('"', '\\"')
+                   .replace("\t", "\\t"))
         result["output"] = f'"{escaped}"'
 
     elif operation == "string_to_html":
