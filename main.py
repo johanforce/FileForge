@@ -59,10 +59,56 @@ QPushButton:hover { background: #e8eaed; border-color: #bdc1c6; }
 QPushButton#Primary { background: #1a73e8; border: 0; color: #ffffff; font-size: 14px; font-weight: 700; padding: 11px 22px; }
 QPushButton#Primary:hover { background: #1765cc; }
 QPushButton:disabled { color: #9aa0a6; background: #f8f9fa; border-color: #e8eaed; }
-QComboBox, QLineEdit { background: #ffffff; border: 1px solid #dadce0; border-radius: 9px; padding: 9px 12px; min-width: 110px; color: #202124; selection-background-color: #d2e3fc; selection-color: #174ea6; }
-QComboBox:hover, QLineEdit:hover { border-color: #8ab4f8; }
-QComboBox:focus, QLineEdit:focus, QPlainTextEdit:focus { border: 1px solid #1a73e8; }
-QComboBox QAbstractItemView { background: #ffffff; color: #202124; selection-background-color: #d2e3fc; selection-color: #174ea6; border: 1px solid #dadce0; }
+QLineEdit { background: #ffffff; border: 1px solid #dadce0; border-radius: 10px; padding: 9px 12px; min-width: 110px; color: #202124; selection-background-color: #d2e3fc; selection-color: #174ea6; }
+QComboBox {
+    background: #ffffff;
+    color: #202124;
+    border: 1px solid #d7deea;
+    border-radius: 12px;
+    min-height: 40px;
+    min-width: 112px;
+    padding: 0 40px 0 14px;
+    font-weight: 600;
+    selection-background-color: #d2e3fc;
+    selection-color: #174ea6;
+}
+QComboBox:hover { border-color: #8ab4f8; background: #fbfdff; }
+QComboBox:focus, QComboBox:on { border: 1px solid #1a73e8; background: #ffffff; }
+QComboBox:disabled { color: #9aa0a6; background: #f8f9fa; border-color: #e8eaed; }
+QComboBox::drop-down {
+    subcontrol-origin: padding;
+    subcontrol-position: top right;
+    width: 36px;
+    border: 0;
+    border-left: 1px solid #edf0f5;
+    border-top-right-radius: 11px;
+    border-bottom-right-radius: 11px;
+    background: transparent;
+}
+QComboBox::drop-down:hover { background: #f1f6ff; }
+QComboBox::down-arrow { width: 10px; height: 10px; }
+QComboBox QAbstractItemView {
+    background: #ffffff;
+    color: #202124;
+    border: 1px solid #dce3ed;
+    border-radius: 12px;
+    padding: 6px;
+    outline: 0;
+    selection-background-color: #e8f0fe;
+    selection-color: #174ea6;
+}
+QComboBox QAbstractItemView::item {
+    min-height: 34px;
+    padding: 8px 12px;
+    margin: 2px;
+    border-radius: 7px;
+}
+QComboBox QAbstractItemView::item:hover { background: #f4f7fc; color: #174ea6; }
+QComboBox QAbstractItemView::item:selected { background: #e8f0fe; color: #174ea6; font-weight: 700; }
+QComboBox QAbstractItemView QScrollBar:vertical { width: 8px; background: transparent; margin: 4px 2px; }
+QComboBox QAbstractItemView QScrollBar::handle:vertical { background: #c7d2e2; border-radius: 4px; min-height: 24px; }
+QLineEdit:hover { border-color: #8ab4f8; }
+QLineEdit:focus, QPlainTextEdit:focus { border: 1px solid #1a73e8; }
 QTabWidget::pane { border: 0; border-bottom: 1px solid #e8eaed; }
 QTabBar::tab { background: transparent; color: #5f6368; padding: 10px 18px; margin-right: 5px; border-bottom: 2px solid transparent; font-weight: 650; }
 QTabBar::tab:selected { color: #1a73e8; border-bottom: 2px solid #1a73e8; }
@@ -735,6 +781,9 @@ class MainWindow(QMainWindow):
         ]
         for label, operation in operations:
             self.text_operation.addItem(label, operation)
+        self.text_operation.setObjectName("OperationCombo")
+        self.text_operation.setMinimumWidth(210)
+        self.text_operation.setMaxVisibleItems(14)
         self.text_operation.currentIndexChanged.connect(
             self.on_text_operation_changed
         )
@@ -767,7 +816,8 @@ class MainWindow(QMainWindow):
         self.text_indent.addItem("2 spaces", 2)
         self.text_indent.addItem("4 spaces", 4)
         self.text_indent.setCurrentIndex(0)
-        self.text_indent.setMaximumWidth(105)
+        self.text_indent.setMinimumWidth(104)
+        self.text_indent.setMaximumWidth(116)
         toolbar.addWidget(self.text_indent)
 
         self.text_wrap_btn = QPushButton("Wrap: Tắt")
@@ -788,6 +838,9 @@ class MainWindow(QMainWindow):
         self.text_model_target.addItem("Java", "java")
         self.text_model_target.addItem("Kotlin", "kotlin")
         self.text_model_target.addItem("C", "c")
+        self.text_model_target.setObjectName("ModelCombo")
+        self.text_model_target.setMinimumWidth(158)
+        self.text_model_target.setMaxVisibleItems(8)
         toolbar.addWidget(self.text_model_target, 1)
 
         self.text_class_label = QLabel("Tên lớp")
