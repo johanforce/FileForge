@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import difflib
+import html
 import re
 import sys
 from pathlib import Path
@@ -10,6 +12,7 @@ from PySide6.QtWidgets import (
     QApplication,
     QAbstractItemView,
     QComboBox,
+    QCheckBox,
     QFileDialog,
     QFileIconProvider,
     QFrame,
@@ -25,6 +28,7 @@ from PySide6.QtWidgets import (
     QTabWidget,
     QTableWidget,
     QTableWidgetItem,
+    QTextEdit,
     QTreeWidget,
     QTreeWidgetItem,
     QPlainTextEdit,
@@ -38,6 +42,7 @@ from fileforge.archive import create_zip
 from fileforge.extraction import extract_archives
 from fileforge.images import SUPPORTED_IMAGE_EXTENSIONS, convert_images
 from fileforge.text_utils import process_text
+from fileforge.compare import compare_text, compare_json, format_text_diff_report
 
 
 STYLE = """
@@ -492,6 +497,7 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(QWidget(), "Giải nén")
         self.tabs.addTab(QWidget(), "Chuyển ảnh")
         self.tabs.addTab(QWidget(), "JSON / XML")
+        self.tabs.addTab(QWidget(), "So sánh")
         self.tabs.currentChanged.connect(self.on_mode_changed)
         outer.addWidget(self.tabs)
 
@@ -636,6 +642,10 @@ class MainWindow(QMainWindow):
         self.text_panel = self.build_text_panel()
         outer.addWidget(self.text_panel, 1)
         self.text_panel.hide()
+
+        self.compare_panel = self.build_compare_panel()
+        outer.addWidget(self.compare_panel, 1)
+        self.compare_panel.hide()
 
         self.on_mode_changed(0)
         self.refresh_queue()
@@ -1299,6 +1309,426 @@ class MainWindow(QMainWindow):
             ]
         return list(self.paths)
 
+    def _build_compare_text_pane(self, title: str, placeholder: str):
+        pane = QFrame()
+        pane.setObjectName("Panel")
+        layout = QVBoxLayout(pane)
+        layout.setContentsMargins(12, 10, 12, 12)
+        layout.setSpacing(7)
+        header = QHBoxLayout()
+        label = QLabel(title)
+        label.setObjectName("Section")
+        header.addWidget(label)
+        header.addStretch()
+        count = QLabel("0 ký tự")
+        count.setObjectName("Muted")
+        header.addWidget(count)
+        layout.addLayout(header)
+        editor = QPlainTextEdit()
+        editor.setObjectName("CodeEditor")
+        editor.setPlaceholderText(placeholder)
+        editor.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
+        editor.setTabStopDistance(28)
+        editor.textChanged.connect(
+            lambda ed=editor, lbl=count: lbl.setText(f"{len(ed.toPlainText()):,} ký tự")
+        )
+        layout.addWidget(editor, 1)
+        return {"widget": pane, "editor": editor, "count": count}
+
+    def _build_json_compare_pane(self, title: str, placeholder: str, side: str):
+        pane = QFrame()
+        pane.setObjectName("Panel")
+        layout = QVBoxLayout(pane)
+        layout.setContentsMargins(12, 10, 12, 12)
+        layout.setSpacing(7)
+        header = QHBoxLayout()
+        label = QLabel(title)
+        label.setObjectName("Section")
+        header.addWidget(label)
+        header.addStretch()
+        source = QComboBox()
+        source.addItem("Dán JSON", "paste")
+        source.addItem("Mở tệp .json…", "file")
+        source.setToolTip("Chọn dán JSON hoặc nạp nội dung từ tệp JSON trên máy")
+        source.currentIndexChanged.connect(
+            lambda index, key=side, combo=source: self.load_json_compare_file(key, index, combo)
+        )
+        header.addWidget(source)
+        layout.addLayout(header)
+        editor = QPlainTextEdit()
+        editor.setObjectName("CodeEditor")
+        editor.setPlaceholderText(placeholder)
+        editor.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
+        editor.setTabStopDistance(28)
+        layout.addWidget(editor, 1)
+        return {"widget": pane, "editor": editor, "source": source}
+
+    def build_compare_panel(self):
+        panel = QFrame()
+        panel.setObjectName("Panel")
+        root = QVBoxLayout(panel)
+        root.setContentsMargins(16, 14, 16, 14)
+        root.setSpacing(10)
+
+        heading = QHBoxLayout()
+        title_col = QVBoxLayout()
+        title = QLabel("Compare workspace")
+        title.setObjectName("Brand")
+        subtitle = QLabel("So sánh văn bản và JSON cục bộ — dữ liệu không rời khỏi máy")
+        subtitle.setObjectName("Muted")
+        title_col.addWidget(title)
+        title_col.addWidget(subtitle)
+        heading.addLayout(title_col)
+        heading.addStretch()
+        root.addLayout(heading)
+
+        self.compare_tabs = QTabWidget()
+        self.compare_tabs.addTab(self._build_string_compare_tab(), "Compare String")
+        self.compare_tabs.addTab(self._build_json_diff_tab(), "JSON Diff")
+        root.addWidget(self.compare_tabs, 1)
+        return panel
+
+    def _build_string_compare_tab(self):
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(4, 10, 4, 4)
+        layout.setSpacing(9)
+
+        options = QHBoxLayout()
+        mode_label = QLabel("Độ chi tiết")
+        mode_label.setObjectName("Muted")
+        options.addWidget(mode_label)
+        self.string_diff_mode = QComboBox()
+        self.string_diff_mode.addItem("Theo dòng", "line")
+        self.string_diff_mode.addItem("Theo từ", "word")
+        self.string_diff_mode.addItem("Theo ký tự", "character")
+        self.string_diff_mode.setMinimumWidth(125)
+        options.addWidget(self.string_diff_mode)
+        self.string_ignore_case = QCheckBox("Bỏ qua hoa/thường")
+        self.string_ignore_whitespace = QCheckBox("Bỏ qua khoảng trắng")
+        self.string_ignore_blank = QCheckBox("Bỏ qua dòng trống")
+        options.addWidget(self.string_ignore_case)
+        options.addWidget(self.string_ignore_whitespace)
+        options.addWidget(self.string_ignore_blank)
+        options.addStretch()
+        self.string_compare_btn = QPushButton("So sánh")
+        self.string_compare_btn.setObjectName("Primary")
+        self.string_compare_btn.clicked.connect(self.run_string_compare)
+        options.addWidget(self.string_compare_btn)
+        self.string_swap_btn = QPushButton("⇄ Đổi bên")
+        self.string_swap_btn.clicked.connect(self.swap_string_compare)
+        options.addWidget(self.string_swap_btn)
+        self.string_clear_btn = QPushButton("Xóa")
+        self.string_clear_btn.clicked.connect(self.clear_string_compare)
+        options.addWidget(self.string_clear_btn)
+        layout.addLayout(options)
+
+        inputs = QSplitter(Qt.Orientation.Horizontal)
+        self.string_before = self._build_compare_text_pane(
+            "BẢN GỐC", "Dán văn bản phiên bản ban đầu…"
+        )
+        self.string_after = self._build_compare_text_pane(
+            "BẢN MỚI", "Dán văn bản phiên bản đã chỉnh sửa…"
+        )
+        inputs.addWidget(self.string_before["widget"])
+        inputs.addWidget(self.string_after["widget"])
+        inputs.setStretchFactor(0, 1)
+        inputs.setStretchFactor(1, 1)
+        inputs.setSizes([500, 500])
+        inputs.setMinimumHeight(160)
+        layout.addWidget(inputs, 2)
+
+        result_header = QHBoxLayout()
+        result_title = QLabel("KẾT QUẢ SO SÁNH")
+        result_title.setObjectName("Section")
+        result_header.addWidget(result_title)
+        result_header.addStretch()
+        self.string_diff_summary = QLabel("Nhập hai bản văn bản rồi chọn So sánh")
+        self.string_diff_summary.setObjectName("Muted")
+        result_header.addWidget(self.string_diff_summary)
+        layout.addLayout(result_header)
+
+        results = QSplitter(Qt.Orientation.Horizontal)
+        self.string_before_result = QTextEdit()
+        self.string_before_result.setObjectName("DiffOutput")
+        self.string_before_result.setReadOnly(True)
+        self.string_before_result.setPlaceholderText("Các phần đã xóa sẽ được đánh dấu ở đây")
+        self.string_after_result = QTextEdit()
+        self.string_after_result.setObjectName("DiffOutput")
+        self.string_after_result.setReadOnly(True)
+        self.string_after_result.setPlaceholderText("Các phần được thêm sẽ được đánh dấu ở đây")
+        results.addWidget(self.string_before_result)
+        results.addWidget(self.string_after_result)
+        results.setStretchFactor(0, 1)
+        results.setStretchFactor(1, 1)
+        layout.addWidget(results, 3)
+        return page
+
+    def _build_json_diff_tab(self):
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(4, 10, 4, 4)
+        layout.setSpacing(9)
+
+        controls = QHBoxLayout()
+        array_label = QLabel("So sánh mảng")
+        array_label.setObjectName("Muted")
+        controls.addWidget(array_label)
+        self.json_array_mode = QComboBox()
+        self.json_array_mode.addItem("Theo vị trí", False)
+        self.json_array_mode.addItem("Bỏ qua thứ tự", True)
+        self.json_array_mode.setToolTip(
+            "Theo vị trí: phần tử [0] so với [0]. Bỏ qua thứ tự: xem mảng như tập hợp có giữ số lần lặp."
+        )
+        controls.addWidget(self.json_array_mode)
+        controls.addStretch()
+        self.json_compare_btn = QPushButton("So sánh JSON")
+        self.json_compare_btn.setObjectName("Primary")
+        self.json_compare_btn.clicked.connect(self.run_json_diff)
+        controls.addWidget(self.json_compare_btn)
+        self.json_swap_btn = QPushButton("⇄ Đổi bên")
+        self.json_swap_btn.clicked.connect(self.swap_json_inputs)
+        controls.addWidget(self.json_swap_btn)
+        self.json_sample_btn = QPushButton("Ví dụ")
+        self.json_sample_btn.clicked.connect(self.load_json_diff_sample)
+        controls.addWidget(self.json_sample_btn)
+        self.json_clear_btn = QPushButton("Xóa")
+        self.json_clear_btn.clicked.connect(self.clear_json_diff)
+        controls.addWidget(self.json_clear_btn)
+        layout.addLayout(controls)
+
+        inputs = QSplitter(Qt.Orientation.Horizontal)
+        self.json_before = self._build_json_compare_pane(
+            "JSON GỐC (A)", "Dán JSON ban đầu vào đây…", "before"
+        )
+        self.json_after = self._build_json_compare_pane(
+            "JSON MỚI (B)", "Dán JSON đã thay đổi vào đây…", "after"
+        )
+        inputs.addWidget(self.json_before["widget"])
+        inputs.addWidget(self.json_after["widget"])
+        inputs.setStretchFactor(0, 1)
+        inputs.setStretchFactor(1, 1)
+        inputs.setSizes([500, 500])
+        inputs.setMinimumHeight(180)
+        layout.addWidget(inputs, 2)
+
+        result_header = QHBoxLayout()
+        result_title = QLabel("KHÁC BIỆT THEO CẤU TRÚC")
+        result_title.setObjectName("Section")
+        result_header.addWidget(result_title)
+        result_header.addStretch()
+        self.json_diff_summary = QLabel("Object key được so sánh không phụ thuộc thứ tự")
+        self.json_diff_summary.setObjectName("Muted")
+        result_header.addWidget(self.json_diff_summary)
+        self.json_diff_filter = QComboBox()
+        self.json_diff_filter.addItem("Tất cả", "all")
+        self.json_diff_filter.addItem("Được thêm", "added")
+        self.json_diff_filter.addItem("Đã xóa", "removed")
+        self.json_diff_filter.addItem("Đã sửa", "changed")
+        self.json_diff_filter.currentIndexChanged.connect(self.filter_json_diff_rows)
+        result_header.addWidget(self.json_diff_filter)
+        layout.addLayout(result_header)
+
+        self.json_diff_table = QTableWidget(0, 4)
+        self.json_diff_table.setObjectName("DiffTable")
+        self.json_diff_table.setHorizontalHeaderLabels(
+            ["LOẠI", "ĐƯỜNG DẪN", "GIÁ TRỊ GỐC", "GIÁ TRỊ MỚI"]
+        )
+        self.json_diff_table.horizontalHeader().setSectionResizeMode(
+            0, QHeaderView.ResizeMode.ResizeToContents
+        )
+        self.json_diff_table.horizontalHeader().setSectionResizeMode(
+            1, QHeaderView.ResizeMode.ResizeToContents
+        )
+        self.json_diff_table.horizontalHeader().setSectionResizeMode(
+            2, QHeaderView.ResizeMode.Stretch
+        )
+        self.json_diff_table.horizontalHeader().setSectionResizeMode(
+            3, QHeaderView.ResizeMode.Stretch
+        )
+        self.json_diff_table.verticalHeader().setVisible(False)
+        self.json_diff_table.setWordWrap(True)
+        self.json_diff_table.setAlternatingRowColors(True)
+        self.json_diff_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.json_diff_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        layout.addWidget(self.json_diff_table, 3)
+
+        footer = QHBoxLayout()
+        self.json_copy_report_btn = QPushButton("Copy báo cáo")
+        self.json_copy_report_btn.clicked.connect(self.copy_json_diff_report)
+        self.json_copy_report_btn.setEnabled(False)
+        footer.addWidget(self.json_copy_report_btn)
+        footer.addStretch()
+        self.json_diff_status = QLabel("Sẵn sàng")
+        self.json_diff_status.setObjectName("Muted")
+        footer.addWidget(self.json_diff_status)
+        layout.addLayout(footer)
+        self._json_diff_result = None
+        return page
+
+    def load_json_compare_file(self, side: str, index: int, combo: QComboBox):
+        if index != 1:
+            return
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Chọn tệp JSON", str(Path.home()), "JSON (*.json);;Tất cả tệp (*)"
+        )
+        if path:
+            try:
+                content = Path(path).read_text(encoding="utf-8-sig")
+                target = self.json_before if side == "before" else self.json_after
+                target["editor"].setPlainText(content)
+                self.json_diff_status.setText(f"Đã nạp {Path(path).name}")
+            except (OSError, UnicodeError) as exc:
+                QMessageBox.warning(self, "Không thể mở JSON", str(exc))
+        combo.blockSignals(True)
+        combo.setCurrentIndex(0)
+        combo.blockSignals(False)
+
+    def run_string_compare(self):
+        before = self.string_before["editor"].toPlainText()
+        after = self.string_after["editor"].toPlainText()
+        if not before and not after:
+            self.string_diff_summary.setText("Hãy nhập nội dung ở cả hai bên")
+            return
+        try:
+            result = compare_text(
+                before,
+                after,
+                self.string_diff_mode.currentData(),
+                ignore_case=self.string_ignore_case.isChecked(),
+                ignore_whitespace=self.string_ignore_whitespace.isChecked(),
+                ignore_blank_lines=self.string_ignore_blank.isChecked(),
+            )
+        except ValueError as exc:
+            QMessageBox.warning(self, "Không thể so sánh", str(exc))
+            return
+
+        style = """
+        <style>
+          body { color:#202124; font-family:Consolas,monospace; font-size:12px; }
+          pre { white-space:pre-wrap; overflow-wrap:anywhere; margin:0; }
+          .diff-removed { background:#fce8e6; color:#b3261e; }
+          .diff-added { background:#e6f4ea; color:#137333; }
+        </style>
+        """
+        self.string_before_result.setHtml(
+            style + "<pre>" + result["before_html"] + "</pre>"
+        )
+        self.string_after_result.setHtml(
+            style + "<pre>" + result["after_html"] + "</pre>"
+        )
+        self.string_diff_summary.setText(
+            f"Thêm {result['added']} · Xóa {result['removed']} · Sửa {result['changed']}"
+        )
+
+    def swap_string_compare(self):
+        before = self.string_before["editor"].toPlainText()
+        after = self.string_after["editor"].toPlainText()
+        self.string_before["editor"].setPlainText(after)
+        self.string_after["editor"].setPlainText(before)
+
+    def clear_string_compare(self):
+        self.string_before["editor"].clear()
+        self.string_after["editor"].clear()
+        self.string_before_result.clear()
+        self.string_after_result.clear()
+        self.string_diff_summary.setText("Đã xóa nội dung")
+
+    def run_json_diff(self):
+        before = self.json_before["editor"].toPlainText()
+        after = self.json_after["editor"].toPlainText()
+        if not before.strip() or not after.strip():
+            self.json_diff_status.setText("Hãy nhập JSON ở cả hai bên")
+            return
+        try:
+            result = compare_json(
+                before,
+                after,
+                ignore_array_order=bool(self.json_array_mode.currentData()),
+            )
+        except ValueError as exc:
+            QMessageBox.warning(self, "JSON không hợp lệ", str(exc))
+            self.json_diff_status.setText("Kiểm tra JSON đầu vào")
+            return
+
+        self._json_diff_result = result
+        self.json_diff_summary.setText(
+            f"{result['total']} khác biệt  ·  +{result['added']} thêm  ·  "
+            f"−{result['removed']} xóa  ·  ~{result['changed']} sửa"
+        )
+        self.json_diff_table.setRowCount(0)
+        for diff in result["differences"]:
+            row = self.json_diff_table.rowCount()
+            self.json_diff_table.insertRow(row)
+            kind_labels = {"added": "THÊM", "removed": "XÓA", "changed": "SỬA"}
+            kind_item = QTableWidgetItem(kind_labels[diff["kind"]])
+            color = {
+                "added": QColor("#137333"),
+                "removed": QColor("#c5221f"),
+                "changed": QColor("#b06000"),
+            }[diff["kind"]]
+            kind_item.setForeground(color)
+            path_item = QTableWidgetItem(diff["path"])
+            before_item = QTableWidgetItem(diff["before"])
+            after_item = QTableWidgetItem(diff["after"])
+            for item, full in (
+                (before_item, diff["before"]),
+                (after_item, diff["after"]),
+            ):
+                item.setToolTip(full)
+            for col, item in enumerate((kind_item, path_item, before_item, after_item)):
+                self.json_diff_table.setItem(row, col, item)
+            self.json_diff_table.setRowHeight(row, 58)
+        self.filter_json_diff_rows()
+        self.json_copy_report_btn.setEnabled(bool(result["differences"]))
+        self.json_diff_status.setText(
+            "Hai tài liệu giống nhau" if not result["differences"] else "So sánh hoàn tất"
+        )
+
+    def filter_json_diff_rows(self):
+        if not hasattr(self, "json_diff_table"):
+            return
+        selected = self.json_diff_filter.currentData()
+        for row in range(self.json_diff_table.rowCount()):
+            kind = self.json_diff_table.item(row, 0)
+            data_kind = {
+                "THÊM": "added", "XÓA": "removed", "SỬA": "changed"
+            }.get(kind.text() if kind else "", "")
+            self.json_diff_table.setRowHidden(
+                row, selected != "all" and data_kind != selected
+            )
+
+    def swap_json_inputs(self):
+        before = self.json_before["editor"].toPlainText()
+        after = self.json_after["editor"].toPlainText()
+        self.json_before["editor"].setPlainText(after)
+        self.json_after["editor"].setPlainText(before)
+
+    def load_json_diff_sample(self):
+        self.json_before["editor"].setPlainText(
+            '{\\n  "name": "FileForge",\\n  "version": "1.0",\\n  "features": ["zip", "image"],\\n  "active": true\\n}'
+        )
+        self.json_after["editor"].setPlainText(
+            '{\\n  "name": "FileForge",\\n  "version": "1.1",\\n  "features": ["zip", "image", "diff"],\\n  "license": "MIT",\\n  "active": true\\n}'
+        )
+
+    def clear_json_diff(self):
+        self.json_before["editor"].clear()
+        self.json_after["editor"].clear()
+        self.json_diff_table.setRowCount(0)
+        self._json_diff_result = None
+        self.json_diff_summary.setText("Object key được so sánh không phụ thuộc thứ tự")
+        self.json_diff_status.setText("Đã xóa nội dung")
+        self.json_copy_report_btn.setEnabled(False)
+
+    def copy_json_diff_report(self):
+        if not self._json_diff_result:
+            return
+        text = format_text_diff_report(self._json_diff_result)
+        if text:
+            QApplication.clipboard().setText(text)
+            self.json_diff_status.setText("Đã sao chép báo cáo")
+
     def on_mode_changed(self, index: int):
         if index == 3:
             self.mode = "text"
@@ -1307,9 +1737,22 @@ class MainWindow(QMainWindow):
             self.drop_area.hide()
             self.queue_panel.hide()
             self.action_panel.hide()
+            self.compare_panel.hide()
             self.text_panel.show()
             return
 
+        if index == 4:
+            self.mode = "compare"
+            self.add_files_btn.hide()
+            self.add_folder_btn.hide()
+            self.drop_area.hide()
+            self.queue_panel.hide()
+            self.action_panel.hide()
+            self.text_panel.hide()
+            self.compare_panel.show()
+            return
+
+        self.compare_panel.hide()
         self.text_panel.hide()
         self.add_files_btn.show()
         self.add_folder_btn.show()
