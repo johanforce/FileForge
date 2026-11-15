@@ -110,8 +110,8 @@ class UISmokeTests(unittest.TestCase):
     def test_text_tool_shows_only_the_top_operation_toolbar(self):
         window = MainWindow()
         self.app.processEvents()
-        self.assertFalse(window.text_pair_tabs.isVisible())
-        self.assertTrue(window.text_operation.isVisible())
+        self.assertTrue(window.text_pair_tabs.isHidden())
+        self.assertFalse(window.text_operation.isHidden())
         window.close()
         window.deleteLater()
         self.app.processEvents()
