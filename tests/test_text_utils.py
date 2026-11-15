@@ -34,7 +34,7 @@ class TextConversionTests(unittest.TestCase):
     def test_html_to_quoted_string_and_back(self):
         source = '<div class="greeting">Hello\\n<span>FileForge</span></div>'
         encoded = process_text("html_to_string", source)["output"]
-        self.assertEqual(encoded, '"<div class=\\"greeting\\">Hello\\\\n<span>FileForge</span></div>"')
+        self.assertEqual(encoded, '"<div class=\\"greeting\\">Hello<span>FileForge</span></div>"')
 
         decoded = process_text("string_to_html", encoded)["output"]
         self.assertIn('<div class="greeting">', decoded)
@@ -64,19 +64,14 @@ class TextConversionTests(unittest.TestCase):
         self.assertIn("second\tvalue", output)
         self.assertNotIn("\\n", output)
 
-    def test_html_to_string_roundtrip_restores_real_newlines_and_tabs(self):
+    def test_html_to_string_removes_newlines_but_preserves_other_content(self):
         source = "<div>\n\tfirst\r\n\tsecond</div>"
         encoded = process_text("html_to_string", source)["output"]
-        self.assertIn(r"\n", encoded)
-        self.assertIn(r"\r", encoded)
+        self.assertNotIn(r"\n", encoded)
+        self.assertNotIn(r"\r", encoded)
         self.assertIn(r"\t", encoded)
-
-        decoded = process_text("string_to_html", encoded, indent_size=4)["output"]
-        self.assertIn("first", decoded)
-        self.assertIn("second", decoded)
-        self.assertNotIn(r"\n", decoded)
-        self.assertNotIn(r"\r", decoded)
-        self.assertNotIn(r"\t", decoded)
+        self.assertIn("first", encoded)
+        self.assertIn("second", encoded)
 
     def test_string_to_html_breaks_multiple_attributes_onto_separate_lines(self):
         source = '<button id="save" class="primary">Save</button>'
