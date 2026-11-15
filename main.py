@@ -942,10 +942,12 @@ class MainWindow(QMainWindow):
         self.text_find_prev.hide()
         self.text_find_next.hide()
         self.text_input_search_shortcut = QShortcut(QKeySequence("Ctrl+F"), self.input_editor)
+        self.text_input_search_shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
         self.text_input_search_shortcut.activated.connect(
             lambda: self.toggle_text_search("input")
         )
         self.text_output_search_shortcut = QShortcut(QKeySequence("Ctrl+F"), self.output_editor)
+        self.text_output_search_shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
         self.text_output_search_shortcut.activated.connect(
             lambda: self.toggle_text_search("output")
         )
@@ -1146,7 +1148,10 @@ class MainWindow(QMainWindow):
         self.text_search.hide()
         self.text_find_prev.hide()
         self.text_find_next.hide()
-        self.output_editor.setFocus()
+        if getattr(self, "_text_search_target", "output") == "input":
+            self.input_editor.setFocus()
+        else:
+            self.output_editor.setFocus()
 
     def find_text_match(self, backward=False):
         query = self.text_search.text()
