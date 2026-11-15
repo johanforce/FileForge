@@ -39,12 +39,44 @@ X-Browser-Validation:abc==
         self.assertEqual(result["method"], "GET")
         self.assertEqual(result["url"], "https://www.youtube.com/s/desktop/bb2198ae/cssbin/www-onepick.css")
         values = dict(result["headers"])
-        self.assertEqual(values["Accept"], "text/css,* /*;q=0.1")
+        self.assertEqual(values["Accept"], "text/css,*/*;q=0.1")
         self.assertEqual(values["Cookie"], "__Secure-YNID=abc; GPS=1; YSC=xyz")
         self.assertEqual(values["Host"], "www.youtube.com")
         self.assertEqual(values["Referer"], "https://www.youtube.com/?app=desktop&hl=vi")
         self.assertEqual(values["sec-ch-ua"], '"Not-A.Brand";v="99"; "Google Chrome";v="157"')
         self.assertIn("X-Browser-Validation: abc==", result["curl"])
+
+
+    def test_parses_bold_line_paired_method_url_and_headers(self):
+        source = r"""**METHOD: POST**\
+**URL**\
+**https\://www\.youtube.com/api/jnn/v1/GenerateIT**\
+**HEADERS**\
+**Accept:**\
+**\*/\***\
+**Accept-Encoding:**\
+**gzip, deflate, br, zstd**\
+**Cookie:**\
+**GPS=1; YSC=abc; PREF=tz=Asia.Saigon; \_\_Secure-YNID=secret**\
+**Content-Type:**\
+**application/json+protobuf**\
+**Host:**\
+**www\.youtube.com**\
+**Origin:**\
+**https\://www\.youtube.com**\
+**User-Agent:**\
+**Mozilla/5.0 (Windows NT 10.0; Win64; x64)**"""
+        result = parse_http_request(source, shell="powershell")
+        self.assertEqual(result["method"], "POST")
+        self.assertEqual(result["url"], "https://www.youtube.com/api/jnn/v1/GenerateIT")
+        headers = dict(result["headers"])
+        self.assertEqual(headers["Accept"], "*/*")
+        self.assertEqual(headers["Accept-Encoding"], "gzip, deflate, br, zstd")
+        self.assertEqual(headers["Cookie"], "GPS=1; YSC=abc; PREF=tz=Asia.Saigon; __Secure-YNID=secret")
+        self.assertEqual(headers["Content-Type"], "application/json+protobuf")
+        self.assertEqual(headers["Host"], "www.youtube.com")
+        self.assertTrue(result["curl"].startswith("curl.exe "))
+        self.assertIn("--request POST", result["curl"])
 
     def test_preserves_accept_wildcard_without_markdown_emphasis_stripping(self):
         source = "# REQUEST\n## METHOD\nGET\n## URL\nhttps://example.com\n## HEADERS\nAccept:text/css,*/*;q=0.1"
