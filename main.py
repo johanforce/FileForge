@@ -1519,17 +1519,48 @@ class MainWindow(QMainWindow):
         layout.addWidget(intro)
 
         editors = QSplitter(Qt.Orientation.Horizontal)
+
+        request_column = QWidget()
+        request_layout = QVBoxLayout(request_column)
+        request_layout.setContentsMargins(0, 0, 0, 0)
+        request_layout.setSpacing(7)
+
+        request_label = QLabel("HTTP REQUEST  ·  METHOD / URL / HEADERS")
+        request_label.setObjectName("Section")
+        request_layout.addWidget(request_label)
+
         self.curl_input = QPlainTextEdit()
         self.curl_input.setObjectName("CodeEditor")
-        self.curl_input.setPlaceholderText("Dán request dạng Markdown hoặc HTTP raw vào đây…")
+        self.curl_input.setPlaceholderText(
+            "Dán request từ DevTools…\\n\\n"
+            "Ví dụ:\\n**METHOD: POST**\\n**URL**\\n"
+            "**https://example.com/api**\\n**HEADERS**\\n"
+            "**x-user-sub:**\\n**giá-trị-nguyên-văn**"
+        )
+        request_layout.addWidget(self.curl_input, 3)
+
+        body_label = QLabel("REQUEST BODY / PAYLOAD  ·  TÙY CHỌN")
+        body_label.setObjectName("Section")
+        request_layout.addWidget(body_label)
+
+        self.curl_body_input = QPlainTextEdit()
+        self.curl_body_input.setObjectName("CodeEditor")
+        self.curl_body_input.setMaximumHeight(150)
+        self.curl_body_input.setPlaceholderText(
+            "Dán JSON / protobuf / form body ở đây. Nội dung được giữ nguyên và đưa vào --data-raw…"
+        )
+        request_layout.addWidget(self.curl_body_input, 2)
+
         self.curl_output = QPlainTextEdit()
         self.curl_output.setObjectName("CodeEditor")
         self.curl_output.setReadOnly(True)
         self.curl_output.setPlaceholderText("Lệnh cURL sẽ xuất hiện ở đây…")
-        editors.addWidget(self.curl_input)
+
+        editors.addWidget(request_column)
         editors.addWidget(self.curl_output)
         editors.setStretchFactor(0, 1)
         editors.setStretchFactor(1, 1)
+        editors.setSizes([520, 520])
         layout.addWidget(editors, 1)
 
         actions = QHBoxLayout()
@@ -1545,21 +1576,31 @@ class MainWindow(QMainWindow):
         copy.clicked.connect(self.copy_curl_result)
         actions.addWidget(copy)
         clear = QPushButton("Xóa")
-        clear.clicked.connect(lambda: (self.curl_input.clear(), self.curl_output.clear(), self.curl_status.setText("Đã xóa")))
+        clear.clicked.connect(lambda: (
+            self.curl_input.clear(),
+            self.curl_body_input.clear(),
+            self.curl_output.clear(),
+            self.curl_status.setText("Đã xóa"),
+        ))
         actions.addWidget(clear)
         layout.addLayout(actions)
         return panel
 
     def convert_to_curl(self):
         try:
-            parsed = parse_http_request(self.curl_input.toPlainText())
+            body_override = self.curl_body_input.toPlainText()
+            parsed = parse_http_request(
+                self.curl_input.toPlainText(),
+                body_override=body_override if body_override != "" else None,
+            )
         except ValueError as exc:
             self.curl_status.setText("Không thể phân tích request")
             QMessageBox.warning(self, "Request chưa hợp lệ", str(exc))
             return
         self.curl_output.setPlainText(parsed["curl"])
+        body_status = " · có body" if parsed.get("body") else ""
         self.curl_status.setText(
-            f"Đã nhận diện {parsed['method']} · {len(parsed['headers'])} headers"
+            f"Đã nhận diện {parsed['method']} · {len(parsed['headers'])} headers{body_status}"
         )
 
     def copy_curl_result(self):
