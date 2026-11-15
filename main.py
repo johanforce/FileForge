@@ -44,6 +44,7 @@ from fileforge.extraction import extract_archives
 from fileforge.images import SUPPORTED_IMAGE_EXTENSIONS, convert_images
 from fileforge.text_utils import process_text
 from fileforge.compare import compare_text, compare_json, format_text_diff_report
+from fileforge.curl_utils import parse_http_request
 
 
 STYLE = """
@@ -627,6 +628,7 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(QWidget(), "Chuyển ảnh")
         self.tabs.addTab(QWidget(), "JSON / XML")
         self.tabs.addTab(QWidget(), "So sánh")
+        self.tabs.addTab(QWidget(), "String → cURL")
         self.tabs.currentChanged.connect(self.on_mode_changed)
         outer.addWidget(self.tabs)
 
@@ -775,6 +777,10 @@ class MainWindow(QMainWindow):
         self.compare_panel = self.build_compare_panel()
         outer.addWidget(self.compare_panel, 1)
         self.compare_panel.hide()
+
+        self.curl_panel = self.build_curl_panel()
+        outer.addWidget(self.curl_panel, 1)
+        self.curl_panel.hide()
 
         self.on_mode_changed(0)
         self.refresh_queue()
@@ -1499,6 +1505,69 @@ class MainWindow(QMainWindow):
         layout.addWidget(editor, 1)
         return {"widget": pane, "editor": editor, "source": source}
 
+
+    def build_curl_panel(self):
+        panel = QFrame()
+        panel.setObjectName("Panel")
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(14, 14, 14, 14)
+        layout.setSpacing(10)
+
+        intro = QLabel("Dán HTTP request đã copy từ DevTools hoặc tài liệu. FileForge sẽ tách METHOD, URL và HEADERS thành lệnh cURL.")
+        intro.setObjectName("Muted")
+        intro.setWordWrap(True)
+        layout.addWidget(intro)
+
+        editors = QSplitter(Qt.Orientation.Horizontal)
+        self.curl_input = QPlainTextEdit()
+        self.curl_input.setObjectName("CodeEditor")
+        self.curl_input.setPlaceholderText("Dán request dạng Markdown hoặc HTTP raw vào đây…")
+        self.curl_output = QPlainTextEdit()
+        self.curl_output.setObjectName("CodeEditor")
+        self.curl_output.setReadOnly(True)
+        self.curl_output.setPlaceholderText("Lệnh cURL sẽ xuất hiện ở đây…")
+        editors.addWidget(self.curl_input)
+        editors.addWidget(self.curl_output)
+        editors.setStretchFactor(0, 1)
+        editors.setStretchFactor(1, 1)
+        layout.addWidget(editors, 1)
+
+        actions = QHBoxLayout()
+        self.curl_status = QLabel("Sẵn sàng")
+        self.curl_status.setObjectName("Muted")
+        actions.addWidget(self.curl_status)
+        actions.addStretch()
+        convert = QPushButton("Chuyển thành cURL  →")
+        convert.setObjectName("Primary")
+        convert.clicked.connect(self.convert_to_curl)
+        actions.addWidget(convert)
+        copy = QPushButton("Copy cURL")
+        copy.clicked.connect(self.copy_curl_result)
+        actions.addWidget(copy)
+        clear = QPushButton("Xóa")
+        clear.clicked.connect(lambda: (self.curl_input.clear(), self.curl_output.clear(), self.curl_status.setText("Đã xóa")))
+        actions.addWidget(clear)
+        layout.addLayout(actions)
+        return panel
+
+    def convert_to_curl(self):
+        try:
+            parsed = parse_http_request(self.curl_input.toPlainText())
+        except ValueError as exc:
+            self.curl_status.setText("Không thể phân tích request")
+            QMessageBox.warning(self, "Request chưa hợp lệ", str(exc))
+            return
+        self.curl_output.setPlainText(parsed["curl"])
+        self.curl_status.setText(
+            f"Đã nhận diện {parsed['method']} · {len(parsed['headers'])} headers"
+        )
+
+    def copy_curl_result(self):
+        value = self.curl_output.toPlainText()
+        if value:
+            QApplication.clipboard().setText(value)
+            self.curl_status.setText("Đã sao chép lệnh cURL")
+
     def build_compare_panel(self):
         panel = QFrame()
         panel.setObjectName("Panel")
@@ -1877,6 +1946,7 @@ class MainWindow(QMainWindow):
     def on_mode_changed(self, index: int):
         if index == 3:
             self.mode = "text"
+            self.curl_panel.hide()
             self.add_files_btn.hide()
             self.add_folder_btn.hide()
             self.drop_area.hide()
@@ -1888,6 +1958,7 @@ class MainWindow(QMainWindow):
 
         if index == 4:
             self.mode = "compare"
+            self.curl_panel.hide()
             self.add_files_btn.hide()
             self.add_folder_btn.hide()
             self.drop_area.hide()
@@ -1897,6 +1968,19 @@ class MainWindow(QMainWindow):
             self.compare_panel.show()
             return
 
+        if index == 5:
+            self.mode = "curl"
+            self.add_files_btn.hide()
+            self.add_folder_btn.hide()
+            self.drop_area.hide()
+            self.queue_panel.hide()
+            self.action_panel.hide()
+            self.text_panel.hide()
+            self.compare_panel.hide()
+            self.curl_panel.show()
+            return
+
+        self.curl_panel.hide()
         self.compare_panel.hide()
         self.text_panel.hide()
         self.add_files_btn.show()
