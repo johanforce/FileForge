@@ -33,6 +33,7 @@ from PySide6.QtWidgets import (
     QTreeWidgetItem,
     QPlainTextEdit,
     QLineEdit,
+    QListView,
     QSplitter,
     QVBoxLayout,
     QWidget,
@@ -86,8 +87,15 @@ QComboBox::drop-down {
     background: transparent;
 }
 QComboBox::drop-down:hover { background: #f1f6ff; }
-QComboBox::down-arrow { width: 10px; height: 10px; }
-QComboBox QAbstractItemView {
+QComboBox::down-arrow {
+    width: 0;
+    height: 0;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 6px solid #5f6368;
+}
+QComboBox:on::down-arrow { border-top-color: #1a73e8; }
+QComboBox QAbstractItemView, QListView#ComboPopupView {
     background: #ffffff;
     color: #202124;
     border: 1px solid #dce3ed;
@@ -97,16 +105,16 @@ QComboBox QAbstractItemView {
     selection-background-color: #e8f0fe;
     selection-color: #174ea6;
 }
-QComboBox QAbstractItemView::item {
+QComboBox QAbstractItemView::item, QListView#ComboPopupView::item {
     min-height: 34px;
     padding: 8px 12px;
     margin: 2px;
     border-radius: 7px;
 }
-QComboBox QAbstractItemView::item:hover { background: #f4f7fc; color: #174ea6; }
-QComboBox QAbstractItemView::item:selected { background: #e8f0fe; color: #174ea6; font-weight: 700; }
-QComboBox QAbstractItemView QScrollBar:vertical { width: 8px; background: transparent; margin: 4px 2px; }
-QComboBox QAbstractItemView QScrollBar::handle:vertical { background: #c7d2e2; border-radius: 4px; min-height: 24px; }
+QComboBox QAbstractItemView::item:hover, QListView#ComboPopupView::item:hover { background: #f4f7fc; color: #174ea6; }
+QComboBox QAbstractItemView::item:selected, QListView#ComboPopupView::item:selected { background: #e8f0fe; color: #174ea6; font-weight: 700; }
+QComboBox QAbstractItemView QScrollBar:vertical, QListView#ComboPopupView QScrollBar:vertical { width: 8px; background: transparent; margin: 4px 2px; }
+QComboBox QAbstractItemView QScrollBar::handle:vertical, QListView#ComboPopupView QScrollBar::handle:vertical { background: #c7d2e2; border-radius: 4px; min-height: 24px; }
 QLineEdit:hover { border-color: #8ab4f8; }
 QLineEdit:focus, QPlainTextEdit:focus { border: 1px solid #1a73e8; }
 QTabWidget::pane { border: 0; border-bottom: 1px solid #e8eaed; }
@@ -130,6 +138,25 @@ QProgressBar::chunk { background: #1a73e8; border-radius: 5px; }
 QSlider::groove:horizontal { background: #e8eaed; height: 5px; border-radius: 2px; }
 QSlider::handle:horizontal { background: #1a73e8; width: 14px; margin: -5px 0; border-radius: 7px; }
 """
+
+
+class StyledComboBox(QComboBox):
+    """Consistent, stylesheet-driven combo box popup across Windows, macOS and Linux."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        popup = QListView()
+        popup.setObjectName("ComboPopupView")
+        popup.setFrameShape(QFrame.Shape.NoFrame)
+        popup.setUniformItemSizes(True)
+        popup.setMouseTracking(True)
+        popup.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.setView(popup)
+        self.setMaxVisibleItems(12)
+        self.setSizeAdjustPolicy(
+            QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
+        )
+        self.setMinimumContentsLength(10)
 
 
 COMPRESSION_OPTIONS = {
@@ -627,7 +654,7 @@ class MainWindow(QMainWindow):
         self.compression_label.setObjectName("Muted")
         controls.addWidget(self.compression_label)
 
-        self.compression = QComboBox()
+        self.compression = StyledComboBox()
         self.compression.addItems(list(COMPRESSION_OPTIONS.keys()))
         self.compression.setCurrentText("Cân bằng")
         controls.addWidget(self.compression)
