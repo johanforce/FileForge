@@ -71,6 +71,12 @@ QTableWidget { background: #ffffff; alternate-background-color: #f8fafd; border:
 QHeaderView::section { background: #f8f9fa; color: #5f6368; padding: 10px 12px; border: 0; font-size: 11px; font-weight: 700; }
 QTableWidget::item { padding: 7px 10px; border: 0; }
 QPlainTextEdit#CodeEditor { background: #1e1f22; border: 1px solid #34363b; border-radius: 10px; padding: 12px; color: #dfe1e5; selection-background-color: #214283; selection-color: #ffffff; font-family: "JetBrains Mono", "SFMono-Regular", "Menlo", "Consolas", monospace; font-size: 14px; }
+QTextEdit#DiffOutput { background: #fbfcff; border: 1px solid #e1e5ec; border-radius: 10px; padding: 10px; color: #202124; selection-background-color: #d2e3fc; font-family: "SFMono-Regular", "Menlo", "Consolas", monospace; font-size: 12px; }
+QTableWidget#DiffTable { background: #ffffff; alternate-background-color: #f8fafd; border: 1px solid #e1e5ec; border-radius: 10px; color: #202124; selection-background-color: #e8f0fe; selection-color: #174ea6; }
+QCheckBox { spacing: 7px; color: #3c4043; }
+QCheckBox::indicator { width: 17px; height: 17px; }
+QCheckBox::indicator:checked { background: #1a73e8; border: 1px solid #1a73e8; border-radius: 4px; }
+QCheckBox::indicator:unchecked { background: #ffffff; border: 1px solid #9aa0a6; border-radius: 4px; }
 QTreeWidget { background: #fbfcff; alternate-background-color: #f3f6fb; border: 1px solid #e1e5ec; border-radius: 10px; padding: 8px; color: #202124; selection-background-color: #d2e3fc; selection-color: #174ea6; font-family: "Google Sans", "Segoe UI", sans-serif; font-size: 13px; }
 QTreeWidget::item { padding: 6px 5px; }
 QProgressBar { background: #e8eaed; border: 0; border-radius: 5px; height: 9px; color: transparent; }
