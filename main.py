@@ -41,161 +41,37 @@ from fileforge.text_utils import process_text
 
 
 STYLE = """
-QMainWindow, QWidget {
-    background: #10131a;
-    color: #edf0f7;
-    font-family: 'SF Pro Display', 'Segoe UI', sans-serif;
-}
-QFrame#Panel {
-    background: #171d28;
-    border: 1px solid #293244;
-    border-radius: 16px;
-}
-QFrame#DropArea {
-    background: #151b27;
-    border: 1px dashed #53617a;
-    border-radius: 15px;
-}
-QFrame#DropArea[dragActive="true"] {
-    background: #20253c;
-    border: 2px dashed #8c83ff;
-}
-QLabel#Brand {
-    font-size: 23px;
-    font-weight: 750;
-    color: #ffffff;
-}
-QLabel#Muted {
-    color: #929db0;
-}
-QLabel#Section {
-    font-size: 15px;
-    font-weight: 700;
-}
-QLabel#DropTitle {
-    font-size: 16px;
-    font-weight: 650;
-}
-QPushButton {
-    background: #252e3e;
-    border: 1px solid #354158;
-    border-radius: 9px;
-    padding: 9px 15px;
-    color: #edf2fa;
-    font-weight: 600;
-}
-QPushButton:hover {
-    background: #303d52;
-    border-color: #53627d;
-}
-QPushButton#Primary {
-    background: #7066ed;
-    border: 0;
-    color: #ffffff;
-    font-size: 14px;
-    font-weight: 700;
-    padding: 11px 22px;
-}
-QPushButton#Primary:hover {
-    background: #8178f5;
-}
-QPushButton:disabled {
-    color: #687386;
-    background: #202633;
-    border-color: #2b3444;
-}
-QComboBox {
-    background: #202838;
-    border: 1px solid #354158;
-    border-radius: 9px;
-    padding: 9px 12px;
-    min-width: 125px;
-    color: #edf2fa;
-}
-QComboBox:hover {
-    border-color: #65738e;
-}
-QComboBox QAbstractItemView {
-    background: #202838;
-    color: #edf2fa;
-    selection-background-color: #5149a8;
-}
-QTabWidget::pane {
-    border: 0;
-    border-bottom: 1px solid #293244;
-}
-QTabBar::tab {
-    background: transparent;
-    color: #929db0;
-    padding: 10px 18px;
-    margin-right: 5px;
-    border-bottom: 2px solid transparent;
-    font-weight: 650;
-}
-QTabBar::tab:selected {
-    color: #ffffff;
-    border-bottom: 2px solid #8178f5;
-}
-QTabBar::tab:hover {
-    color: #ffffff;
-}
-QTableWidget {
-    background: #141a24;
-    alternate-background-color: #181f2b;
-    border: 0;
-    border-radius: 10px;
-    gridline-color: transparent;
-    selection-background-color: #34345a;
-    selection-color: #ffffff;
-    outline: 0;
-}
-QHeaderView::section {
-    background: #202838;
-    color: #929db0;
-    padding: 10px 12px;
-    border: 0;
-    font-size: 10px;
-    font-weight: 700;
-}
-QTableWidget::item {
-    padding: 7px 10px;
-    border: 0;
-}
-QPlainTextEdit, QTreeWidget {
-    background: #141a24;
-    border: 1px solid #293244;
-    border-radius: 10px;
-    padding: 8px;
-    selection-background-color: #34345a;
-    selection-color: #ffffff;
-    font-family: 'SF Mono', 'Menlo', monospace;
-    font-size: 12px;
-}
-QTreeWidget::item {
-    padding: 5px 4px;
-}
-QProgressBar {
-    background: #252e3e;
-    border: 0;
-    border-radius: 5px;
-    height: 9px;
-    color: transparent;
-}
-QProgressBar::chunk {
-    background: #8178f5;
-    border-radius: 5px;
-}
-QSlider::groove:horizontal {
-    background: #252e3e;
-    height: 5px;
-    border-radius: 2px;
-}
-QSlider::handle:horizontal {
-    background: #8178f5;
-    width: 14px;
-    margin: -5px 0;
-    border-radius: 7px;
-}
+QMainWindow, QWidget { background: #f6f8fc; color: #202124; font-family: "Google Sans", "Segoe UI", sans-serif; font-size: 14px; }
+QFrame#Panel { background: #ffffff; border: 1px solid #e3e7ef; border-radius: 16px; }
+QFrame#DropArea { background: #f8faff; border: 1px dashed #9aaecb; border-radius: 15px; }
+QFrame#DropArea[dragActive="true"] { background: #e8f0fe; border: 2px dashed #1a73e8; }
+QLabel#Brand { font-size: 24px; font-weight: 750; color: #202124; }
+QLabel#Muted { color: #5f6368; }
+QLabel#Section { font-size: 15px; font-weight: 700; color: #202124; }
+QLabel#DropTitle { font-size: 16px; font-weight: 650; color: #202124; }
+QPushButton { background: #f1f3f4; border: 1px solid #dadce0; border-radius: 10px; padding: 9px 15px; color: #202124; font-weight: 600; }
+QPushButton:hover { background: #e8eaed; border-color: #bdc1c6; }
+QPushButton#Primary { background: #1a73e8; border: 0; color: #ffffff; font-size: 14px; font-weight: 700; padding: 11px 22px; }
+QPushButton#Primary:hover { background: #1765cc; }
+QPushButton:disabled { color: #9aa0a6; background: #f8f9fa; border-color: #e8eaed; }
+QComboBox, QLineEdit { background: #ffffff; border: 1px solid #dadce0; border-radius: 9px; padding: 9px 12px; min-width: 110px; color: #202124; selection-background-color: #d2e3fc; selection-color: #174ea6; }
+QComboBox:hover, QLineEdit:hover { border-color: #8ab4f8; }
+QComboBox:focus, QLineEdit:focus, QPlainTextEdit:focus { border: 1px solid #1a73e8; }
+QComboBox QAbstractItemView { background: #ffffff; color: #202124; selection-background-color: #d2e3fc; selection-color: #174ea6; border: 1px solid #dadce0; }
+QTabWidget::pane { border: 0; border-bottom: 1px solid #e8eaed; }
+QTabBar::tab { background: transparent; color: #5f6368; padding: 10px 18px; margin-right: 5px; border-bottom: 2px solid transparent; font-weight: 650; }
+QTabBar::tab:selected { color: #1a73e8; border-bottom: 2px solid #1a73e8; }
+QTabBar::tab:hover { color: #174ea6; }
+QTableWidget { background: #ffffff; alternate-background-color: #f8fafd; border: 0; border-radius: 10px; gridline-color: transparent; selection-background-color: #e8f0fe; selection-color: #174ea6; outline: 0; }
+QHeaderView::section { background: #f8f9fa; color: #5f6368; padding: 10px 12px; border: 0; font-size: 11px; font-weight: 700; }
+QTableWidget::item { padding: 7px 10px; border: 0; }
+QPlainTextEdit { background: #fbfcff; border: 1px solid #e1e5ec; border-radius: 10px; padding: 12px; color: #202124; selection-background-color: #d2e3fc; selection-color: #174ea6; font-family: "SFMono-Regular", "Menlo", "Consolas", monospace; font-size: 14px; }
+QTreeWidget { background: #fbfcff; alternate-background-color: #f3f6fb; border: 1px solid #e1e5ec; border-radius: 10px; padding: 8px; color: #202124; selection-background-color: #d2e3fc; selection-color: #174ea6; font-family: "Google Sans", "Segoe UI", sans-serif; font-size: 13px; }
+QTreeWidget::item { padding: 6px 5px; }
+QProgressBar { background: #e8eaed; border: 0; border-radius: 5px; height: 9px; color: transparent; }
+QProgressBar::chunk { background: #1a73e8; border-radius: 5px; }
+QSlider::groove:horizontal { background: #e8eaed; height: 5px; border-radius: 2px; }
+QSlider::handle:horizontal { background: #1a73e8; width: 14px; margin: -5px 0; border-radius: 7px; }
 """
 
 
@@ -390,6 +266,18 @@ class JSONTreeWidget(QTreeWidget):
         for key, child_value in values[start:end]:
             child = QTreeWidgetItem([str(key), self._preview(child_value)])
             child.setData(0, Qt.ItemDataRole.UserRole, child_value)
+            child.setForeground(0, QColor("#5f6368"))
+            if isinstance(child_value, str):
+                value_color = "#137333"
+            elif isinstance(child_value, bool):
+                value_color = "#9334e6"
+            elif child_value is None:
+                value_color = "#80868b"
+            elif isinstance(child_value, (int, float)):
+                value_color = "#1a73e8"
+            else:
+                value_color = "#b06000"
+            child.setForeground(1, QColor(value_color))
             if self._is_container(child_value) and child_value:
                 self._add_lazy_marker(child)
             parent.addChild(child)
@@ -498,12 +386,12 @@ class HTMLSyntaxHighlighter(QSyntaxHighlighter):
         super().__init__(document)
         self.rules = []
         for pattern, color, bold in [
-            (r"<!--.*?-->", "#6c7086", False),
-            (r"<!DOCTYPE[^>]*>", "#94e2d5", True),
-            (r"</?|/?>", "#6c7086", True),
-            (r"\b[\w:-]+(?=\s*=)", "#a6e3a1", False),
-            (r'"[^"]*"|\'[^\']*\'', "#f9e2af", False),
-            (r"</?[\w:-]+", "#89b4fa", True),
+            (r"<!--.*?-->", "#80868b", False),
+            (r"<!DOCTYPE[^>]*>", "#9334e6", True),
+            (r"</?|/?>", "#5f6368", True),
+            (r"\b[\w:-]+(?=\s*=)", "#137333", True),
+            (r'"[^"]*"|\'[^\']*\'', "#b06000", False),
+            (r"</?[\w:-]+", "#1a73e8", True),
         ]:
             fmt = QTextCharFormat()
             fmt.setForeground(QColor(color))
@@ -805,7 +693,8 @@ class MainWindow(QMainWindow):
         for title, _forward, _reverse in self.text_pair_definitions:
             self.text_pair_tabs.addTab(QWidget(), title)
         self.text_pair_tabs.currentChanged.connect(self.select_text_pair)
-        layout.addWidget(self.text_pair_tabs)
+        # Keep pair state internally; the dropdown is the only visible toolbar.
+        self.text_pair_tabs.hide()
 
         self.text_swap_btn = QPushButton("⇄")
         self.text_swap_btn.setToolTip("Đảo chiều chuyển đổi và đưa kết quả hiện tại về ô đầu vào")
