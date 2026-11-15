@@ -1711,12 +1711,21 @@ class MainWindow(QMainWindow):
         self.json_after["editor"].setPlainText(before)
 
     def load_json_diff_sample(self):
-        self.json_before["editor"].setPlainText(
-            '{\\n  "name": "FileForge",\\n  "version": "1.0",\\n  "features": ["zip", "image"],\\n  "active": true\\n}'
-        )
-        self.json_after["editor"].setPlainText(
-            '{\\n  "name": "FileForge",\\n  "version": "1.1",\\n  "features": ["zip", "image", "diff"],\\n  "license": "MIT",\\n  "active": true\\n}'
-        )
+        before = """{
+  "name": "FileForge",
+  "version": "1.0",
+  "features": ["zip", "image"],
+  "active": true
+}"""
+        after = """{
+  "name": "FileForge",
+  "version": "1.1",
+  "features": ["zip", "image", "diff"],
+  "license": "MIT",
+  "active": true
+}"""
+        self.json_before["editor"].setPlainText(before)
+        self.json_after["editor"].setPlainText(after)
 
     def clear_json_diff(self):
         self.json_before["editor"].clear()
