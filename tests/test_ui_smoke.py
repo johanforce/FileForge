@@ -107,6 +107,19 @@ class UISmokeTests(unittest.TestCase):
         window.deleteLater()
         self.app.processEvents()
 
+    def test_model_target_includes_java_kotlin_and_c(self):
+        window = MainWindow()
+        targets = {
+            window.text_model_target.itemData(index)
+            for index in range(window.text_model_target.count())
+        }
+        self.assertTrue({"java", "kotlin", "c"}.issubset(targets))
+        self.assertEqual(window.input_editor.objectName(), "CodeEditor")
+        self.assertEqual(window.output_editor.objectName(), "CodeEditor")
+        window.close()
+        window.deleteLater()
+        self.app.processEvents()
+
     def test_text_tool_shows_only_the_top_operation_toolbar(self):
         window = MainWindow()
         self.app.processEvents()
