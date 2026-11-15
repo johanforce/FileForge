@@ -107,6 +107,15 @@ class UISmokeTests(unittest.TestCase):
         window.deleteLater()
         self.app.processEvents()
 
+    def test_text_tool_shows_only_the_top_operation_toolbar(self):
+        window = MainWindow()
+        self.app.processEvents()
+        self.assertFalse(window.text_pair_tabs.isVisible())
+        self.assertTrue(window.text_operation.isVisible())
+        window.close()
+        window.deleteLater()
+        self.app.processEvents()
+
     def test_html_output_to_input_uses_clean_html_not_fold_markers(self):
         window = MainWindow()
         clean_html = '<div>\\n  <p>hello</p>\\n</div>'
