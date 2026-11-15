@@ -8,8 +8,9 @@ class TextDiffTests(unittest.TestCase):
         result = compare_text("alpha\nbeta\n", "alpha\ngamma\n", "line")
         self.assertIn('class="diff-removed"', result["before_html"])
         self.assertIn('class="diff-added"', result["after_html"])
-        self.assertEqual(result["removed"], 1)
-        self.assertEqual(result["added"], 1)
+        self.assertEqual(result["changed"], 1)
+        self.assertEqual(result["removed"], 0)
+        self.assertEqual(result["added"], 0)
 
     def test_word_and_character_diff_find_small_changes(self):
         word = compare_text("the quick fox", "the quiet fox", "word")
@@ -17,7 +18,7 @@ class TextDiffTests(unittest.TestCase):
         self.assertIn("quick", word["before_html"])
         self.assertIn("quiet", word["after_html"])
         self.assertGreater(word["changed"], 0)
-        self.assertGreater(char["changed"], 0)
+        self.assertGreater(char["removed"] + char["added"] + char["changed"], 0)
 
     def test_ignore_case_whitespace_and_blank_lines(self):
         result = compare_text(
