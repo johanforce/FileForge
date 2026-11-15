@@ -4,9 +4,9 @@ import unittest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import QEventLoop, QThread, QTimer
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QListView
 
-from main import JSONTreeWidget, MainWindow, TextTaskWorker
+from main import JSONTreeWidget, MainWindow, StyledComboBox, TextTaskWorker
 
 
 class UISmokeTests(unittest.TestCase):
@@ -14,6 +14,17 @@ class UISmokeTests(unittest.TestCase):
     def setUpClass(cls):
         cls.app = QApplication.instance() or QApplication([])
         cls.app.setQuitOnLastWindowClosed(False)
+
+    def test_dropdown_uses_custom_chevron_and_rounded_popup_frame(self):
+        combo = StyledComboBox()
+        combo.addItems(["Theo dòng", "Theo mục", "Tự động"])
+        self.assertIsInstance(combo.view(), QListView)
+        self.assertEqual(combo.view().objectName(), "ComboPopupView")
+        self.assertIsNotNone(combo._popup_container)
+        self.assertEqual(combo._popup_container.objectName(), "ComboPopupContainer")
+        combo.close()
+        combo.deleteLater()
+        self.app.processEvents()
 
     def test_json_xml_tab_switches_to_text_tool(self):
         window = MainWindow()
