@@ -417,10 +417,10 @@ class CodeSyntaxHighlighter(QSyntaxHighlighter):
         }
         if language == "json":
             rules = [
-                (r'"(?:[^"\\\\]|\\\\.)*"(?=\\s*:)', "type", True),
-                (r'"(?:[^"\\\\]|\\\\.)*"', "string", False),
-                (r'\\b(?:true|false|null)\\b', "literal", True),
-                (r'-?\\b\\d+(?:\\.\\d+)?(?:[eE][+-]?\\d+)?\\b', "number", False),
+                (r'"(?:[^"\\]|\\.)*"(?=\s*:)', "type", True),
+                (r'"(?:[^"\\]|\\.)*"', "string", False),
+                (r'\b(?:true|false|null)\b', "literal", True),
+                (r'-?\b\d+(?:\.\d+)?(?:[eE][+-]?\d+)?\b', "number", False),
             ]
         else:
             rules = [
