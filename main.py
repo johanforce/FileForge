@@ -728,6 +728,8 @@ class MainWindow(QMainWindow):
             ("Định dạng JSON", "format_json"),
             ("XML → Chuỗi", "xml_to_string"),
             ("Chuỗi → XML", "string_to_xml"),
+            ("HTML → String", "html_to_string"),
+            ("String → HTML", "string_to_html"),
             ("JSON → Model", "json_to_model"),
         ]
         for label, operation in operations:
@@ -909,7 +911,7 @@ class MainWindow(QMainWindow):
         QMessageBox.warning(
             self,
             "Dữ liệu chưa hợp lệ",
-            "Không thể xử lý nội dung. Kiểm tra cú pháp JSON/XML rồi thử lại.\n\n"
+            "Không thể xử lý nội dung. Kiểm tra cú pháp JSON/XML/HTML rồi thử lại.\n\n"
             + message,
         )
 
