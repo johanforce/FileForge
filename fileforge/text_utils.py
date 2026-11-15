@@ -42,12 +42,12 @@ def _load_xml_string(value: str) -> ET.Element:
 
 
 def _decode_html_escapes(value: str) -> str:
-    """Decode String escapes into real whitespace and literal characters."""
+    """Decode escaped whitespace and quotes into their real characters."""
     out: list[str] = []
     i = 0
     mapping = {"n": "\n", "r": "\r", "t": "\t", '"': '"', "'": "'", "\\": "\\"}
     while i < len(value):
-        if value[i] == "\\" && i + 1 < len(value):
+        if value[i] == "\\" and i + 1 < len(value):
             nxt = value[i + 1]
             if nxt in mapping:
                 out.append(mapping[nxt])
@@ -59,7 +59,6 @@ def _decode_html_escapes(value: str) -> str:
 
 
 def _unwrap_html_string(value: str) -> str:
-    """Unwrap JSON/single-quoted strings and decode escaped whitespace."""
     raw = value.strip()
     if len(raw) >= 2 and raw[0] == '"' and raw[-1] == '"':
         decoded = json.loads(raw)
@@ -72,15 +71,15 @@ def _unwrap_html_string(value: str) -> str:
 
 
 def _pretty_html(value: str, indent_size: int = 2) -> str:
-    """Format HTML fragments like formatter(1).py, including multiline attrs."""
+    """Format HTML fragments and break tags with multiple attributes onto lines."""
     token_re = re.compile(
-        r"(<!--.*?-->)|(<!DOCTYPE[^>]*>)|(<\\s*/\\s*[\\w:-]+\\s*>)"
-        r"|(<\\s*[\\w:-]+(?:\\s[^>]*)?\\s*/>)"
-        r"|(<\\s*[\\w:-]+(?:\\s[^>]*)?>)|([^<]+)",
+        r"(<!--.*?-->)|(<!DOCTYPE[^>]*>)|(<\s*/\s*[\w:-]+\s*>)"
+        r"|(<\s*[\w:-]+(?:\s[^>]*)?\s*/>)"
+        r"|(<\s*[\w:-]+(?:\s[^>]*)?>)|([^<]+)",
         re.DOTALL | re.IGNORECASE,
     )
     attr_re = re.compile(
-        r"""([\\w:-]+)\\s*(=)\\s*("(?:[^"\\\\]|\\\\.)*"|'(?:[^'\\\\]|\\\\.)*')|([\\w:-]+)""",
+        r"""([\w:-]+)\s*(=)\s*("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')|([\w:-]+)""",
         re.DOTALL,
     )
     lines: list[str] = []
@@ -100,7 +99,7 @@ def _pretty_html(value: str, indent_size: int = 2) -> str:
             raw = (selfclose or opentag).strip()
             is_self = selfclose is not None
             inner = raw[1:-2].rstrip() if is_self else raw[1:-1].rstrip()
-            tag_match = re.match(r"\\s*([\\w:-]+)(.*)", inner, re.DOTALL)
+            tag_match = re.match(r"\s*([\w:-]+)(.*)", inner, re.DOTALL)
             if not tag_match:
                 lines.append(pad * depth + raw)
                 continue
