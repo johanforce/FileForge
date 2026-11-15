@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 
 from PySide6.QtCore import QFileInfo, Qt, QThread, QUrl, Signal
-from PySide6.QtGui import QDesktopServices, QDragEnterEvent, QDropEvent, QFont
+from PySide6.QtGui import QDesktopServices, QDragEnterEvent, QDropEvent, QFont, QColor, QSyntaxHighlighter, QTextCharFormat
 from PySide6.QtWidgets import (
     QApplication,
     QAbstractItemView,
@@ -279,12 +279,14 @@ class TextTaskWorker(QThread):
         text: str,
         class_name: str,
         model_target: str,
+        indent_size: int = 2,
     ):
         super().__init__()
         self.operation = operation
         self.text = text
         self.class_name = class_name
         self.model_target = model_target
+        self.indent_size = indent_size
 
     def run(self):
         try:
@@ -293,6 +295,7 @@ class TextTaskWorker(QThread):
                 self.text,
                 self.class_name,
                 self.model_target,
+                self.indent_size,
             )
             self.completed.emit(result)
         except Exception as exc:
@@ -473,6 +476,32 @@ class DropArea(QFrame):
             event.acceptProposedAction()
 
 
+class HTMLSyntaxHighlighter(QSyntaxHighlighter):
+    """Lightweight HTML syntax highlighting for the result editor."""
+
+    def __init__(self, document):
+        super().__init__(document)
+        self.rules = []
+        for pattern, color, bold in [
+            (r"<!--.*?-->", "#6c7086", False),
+            (r"<!DOCTYPE[^>]*>", "#94e2d5", True),
+            (r"</?|/?>", "#6c7086", True),
+            (r"\b[\w:-]+(?=\s*=)", "#a6e3a1", False),
+            (r'"[^"]*"|\'[^\']*\'', "#f9e2af", False),
+            (r"</?[\w:-]+", "#89b4fa", True),
+        ]:
+            fmt = QTextCharFormat()
+            fmt.setForeground(QColor(color))
+            if bold:
+                fmt.setFontWeight(QFont.Weight.Bold)
+            self.rules.append((re.compile(pattern), fmt))
+
+    def highlightBlock(self, text):
+        for pattern, fmt in self.rules:
+            for match in pattern.finditer(text):
+                self.setFormat(match.start(), match.end() - match.start(), fmt)
+
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -487,6 +516,10 @@ class MainWindow(QMainWindow):
         self.mode = "zip"
         self.text_worker: TextTaskWorker | None = None
         self.text_busy = False
+        self.text_html_highlighter = None
+        self.text_html_mode = False
+        self.text_wrap_enabled = False
+        self.text_folded_blocks = []
 
         root = QWidget()
         self.setCentralWidget(root)
@@ -739,6 +772,28 @@ class MainWindow(QMainWindow):
         )
         toolbar.addWidget(self.text_operation, 2)
 
+        self.text_swap_btn = QPushButton("⇄")
+        self.text_swap_btn.setToolTip("Đảo chiều chuyển đổi và đưa kết quả hiện tại về ô đầu vào")
+        self.text_swap_btn.clicked.connect(self.swap_text_direction)
+        toolbar.addWidget(self.text_swap_btn)
+
+        self.text_indent_label = QLabel("Indent")
+        self.text_indent_label.setObjectName("Muted")
+        toolbar.addWidget(self.text_indent_label)
+        self.text_indent = QComboBox()
+        self.text_indent.addItem("2 spaces", 2)
+        self.text_indent.addItem("4 spaces", 4)
+        self.text_indent.setCurrentIndex(0)
+        self.text_indent.setMaximumWidth(105)
+        toolbar.addWidget(self.text_indent)
+
+        self.text_wrap_btn = QPushButton("Wrap: Tắt")
+        self.text_wrap_btn.clicked.connect(self.toggle_text_wrap)
+        toolbar.addWidget(self.text_wrap_btn)
+        self.text_layout_btn = QPushButton("Xếp dọc")
+        self.text_layout_btn.clicked.connect(self.toggle_text_layout)
+        toolbar.addWidget(self.text_layout_btn)
+
         self.text_model_label = QLabel("Model")
         self.text_model_label.setObjectName("Muted")
         toolbar.addWidget(self.text_model_label)
@@ -767,6 +822,7 @@ class MainWindow(QMainWindow):
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
         splitter.setChildrenCollapsible(False)
+        self.text_splitter = splitter
 
         self.input_pane = self._build_text_pane(
             "ĐẦU VÀO",
@@ -801,6 +857,26 @@ class MainWindow(QMainWindow):
         footer.addWidget(self.text_status)
         footer.addStretch()
 
+        self.text_search = QLineEdit()
+        self.text_search.setPlaceholderText("Tìm trong kết quả…")
+        self.text_search.setMaximumWidth(180)
+        self.text_search.returnPressed.connect(self.find_next_text)
+        footer.addWidget(self.text_search)
+        self.text_find_prev = QPushButton("↑")
+        self.text_find_prev.setToolTip("Tìm kết quả trước")
+        self.text_find_prev.clicked.connect(lambda: self.find_text_match(backward=True))
+        footer.addWidget(self.text_find_prev)
+        self.text_find_next = QPushButton("↓")
+        self.text_find_next.setToolTip("Tìm kết quả tiếp theo")
+        self.text_find_next.clicked.connect(self.find_next_text)
+        footer.addWidget(self.text_find_next)
+        self.text_fold_btn = QPushButton("Thu gọn HTML")
+        self.text_fold_btn.clicked.connect(self.fold_html_output)
+        footer.addWidget(self.text_fold_btn)
+        self.text_unfold_btn = QPushButton("Mở rộng HTML")
+        self.text_unfold_btn.clicked.connect(self.unfold_html_output)
+        footer.addWidget(self.text_unfold_btn)
+
         self.text_copy_btn = QPushButton("Sao chép kết quả")
         self.text_copy_btn.setEnabled(False)
         self.text_copy_btn.clicked.connect(self.copy_text_result)
@@ -813,6 +889,8 @@ class MainWindow(QMainWindow):
         footer.addWidget(self.text_progress)
 
         layout.addLayout(footer)
+        self.text_fold_btn.hide()
+        self.text_unfold_btn.hide()
         self.update_text_model_controls()
         return panel
 
@@ -844,6 +922,7 @@ class MainWindow(QMainWindow):
         operation = self.text_operation.currentData()
         class_name = self.text_class_name.text().strip() or "RootModel"
         model_target = self.text_model_target.currentData()
+        indent_size = int(self.text_indent.currentData())
 
         self.text_busy = True
         self.tabs.setEnabled(False)
@@ -858,6 +937,7 @@ class MainWindow(QMainWindow):
             source,
             class_name,
             model_target,
+            indent_size,
         )
         self.text_worker.completed.connect(self.on_text_completed)
         self.text_worker.failed.connect(self.on_text_failed)
@@ -871,6 +951,14 @@ class MainWindow(QMainWindow):
         self.text_progress.hide()
 
         self.output_editor.setPlainText(result["output"])
+        self.text_html_mode = self.text_operation.currentData() == "string_to_html"
+        if self.text_html_highlighter is not None:
+            self.text_html_highlighter.setDocument(None)
+            self.text_html_highlighter = None
+        if self.text_html_mode:
+            self.text_html_highlighter = HTMLSyntaxHighlighter(self.output_editor.document())
+        self.text_fold_btn.setVisible(self.text_html_mode)
+        self.text_unfold_btn.setVisible(self.text_html_mode)
 
         input_valid = result.get("input_json_valid", False)
         output_valid = result.get("output_json_valid", False)
@@ -914,6 +1002,119 @@ class MainWindow(QMainWindow):
             "Không thể xử lý nội dung. Kiểm tra cú pháp JSON/XML/HTML rồi thử lại.\n\n"
             + message,
         )
+
+
+    def swap_text_direction(self):
+        pairs = {
+            "json_to_string": "string_to_json",
+            "string_to_json": "json_to_string",
+            "xml_to_string": "string_to_xml",
+            "string_to_xml": "xml_to_string",
+            "html_to_string": "string_to_html",
+            "string_to_html": "html_to_string",
+        }
+        current = self.text_operation.currentData()
+        reverse = pairs.get(current)
+        if not reverse:
+            self.text_status.setText("Chức năng này không có chiều chuyển đổi ngược.")
+            return
+        previous_output = self.output_editor.toPlainText()
+        self.text_operation.setCurrentIndex(
+            self.text_operation.findData(reverse)
+        )
+        if previous_output.strip():
+            self.input_editor.setPlainText(previous_output)
+            self.run_text_action()
+
+    def toggle_text_wrap(self):
+        self.text_wrap_enabled = not self.text_wrap_enabled
+        mode = (
+            QPlainTextEdit.LineWrapMode.WidgetWidth
+            if self.text_wrap_enabled
+            else QPlainTextEdit.LineWrapMode.NoWrap
+        )
+        self.input_editor.setLineWrapMode(mode)
+        self.output_editor.setLineWrapMode(mode)
+        self.text_wrap_btn.setText(
+            "Wrap: Bật" if self.text_wrap_enabled else "Wrap: Tắt"
+        )
+
+    def toggle_text_layout(self):
+        vertical = self.text_splitter.orientation() == Qt.Orientation.Horizontal
+        self.text_splitter.setOrientation(
+            Qt.Orientation.Vertical if vertical else Qt.Orientation.Horizontal
+        )
+        self.text_layout_btn.setText("Xếp ngang" if vertical else "Xếp dọc")
+
+    def find_text_match(self, backward=False):
+        query = self.text_search.text()
+        if not query:
+            return
+        flags = QPlainTextEdit.FindFlag()
+        if backward:
+            flags |= QPlainTextEdit.FindFlag.FindBackward
+        if not self.output_editor.find(query, flags):
+            cursor = self.output_editor.textCursor()
+            cursor.movePosition(
+                cursor.MoveOperation.End if backward else cursor.MoveOperation.Start
+            )
+            self.output_editor.setTextCursor(cursor)
+            self.output_editor.find(query, flags)
+
+    def find_next_text(self):
+        self.find_text_match(False)
+
+    def fold_html_output(self):
+        self._set_html_block_visibility(fold=True)
+
+    def unfold_html_output(self):
+        self._set_html_block_visibility(fold=False)
+
+    def _set_html_block_visibility(self, fold):
+        if not self.text_html_mode:
+            return
+        doc = self.output_editor.document()
+        blocks = []
+        block = doc.firstBlock()
+        while block.isValid():
+            blocks.append(block)
+            block = block.next()
+        if not fold:
+            for block in blocks:
+                block.setVisible(True)
+                block.setLineCount(1)
+            doc.markContentsDirty(0, doc.characterCount())
+            self.output_editor.viewport().update()
+            self.text_status.setText("Đã mở rộng HTML")
+            return
+
+        stack = []
+        hidden = set()
+        void_tags = {"area", "base", "br", "col", "embed", "hr", "img",
+                     "input", "link", "meta", "param", "source", "track", "wbr"}
+        for index, block in enumerate(blocks):
+            line = block.text().strip()
+            close = re.match(r"</\s*([\w:-]+)", line)
+            opened = re.match(r"<\s*([\w:-]+)\b", line)
+            if close:
+                tag = close.group(1).lower()
+                for pos in range(len(stack) - 1, -1, -1):
+                    if stack[pos][0] == tag:
+                        open_index = stack[pos][1]
+                        del stack[pos:]
+                        if index > open_index:
+                            hidden.update(range(open_index + 1, index + 1))
+                        break
+            elif opened and not line.endswith("/>"):
+                tag = opened.group(1).lower()
+                if tag not in void_tags:
+                    stack.append((tag, index))
+        for index in hidden:
+            blocks[index].setVisible(False)
+            blocks[index].setLineCount(0)
+        doc.markContentsDirty(0, doc.characterCount())
+        self.output_editor.viewport().update()
+        self.text_status.setText(f"Đã thu gọn {len(hidden)} dòng HTML")
 
     def copy_text_result(self):
         value = self.output_editor.toPlainText()
