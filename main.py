@@ -535,6 +535,7 @@ class MainWindow(QMainWindow):
         self.text_html_mode = False
         self.text_wrap_enabled = False
         self.text_folded_blocks = []
+        self._html_folded_blocks: set[int] = set()
 
         root = QWidget()
         self.setCentralWidget(root)
@@ -788,7 +789,7 @@ class MainWindow(QMainWindow):
         for label, operation in operations:
             self.text_operation.addItem(label, operation)
         self.text_operation.currentIndexChanged.connect(
-            self.update_text_model_controls
+            self.on_text_operation_changed
         )
         toolbar.addWidget(self.text_operation, 2)
 
@@ -958,6 +959,17 @@ class MainWindow(QMainWindow):
         self.update_text_model_controls()
         return panel
 
+    def on_text_operation_changed(self):
+        """Keep the action dropdown and paired tabs synchronized."""
+        self.update_text_model_controls()
+        operation = self.text_operation.currentData()
+        for index, (_title, forward, reverse) in enumerate(self.text_pair_definitions):
+            if operation == forward or operation == reverse:
+                self.text_pair_flip[index] = operation == reverse
+                if self.text_pair_tabs.currentIndex() != index:
+                    self.text_pair_tabs.setCurrentIndex(index)
+                break
+
     def update_text_model_controls(self):
         is_model = self.text_operation.currentData() == "json_to_model"
         self.text_model_label.setVisible(is_model)
@@ -1016,6 +1028,7 @@ class MainWindow(QMainWindow):
 
         self.output_editor.setPlainText(result["output"])
         self.text_html_mode = self.text_operation.currentData() == "string_to_html"
+        self._html_folded_blocks.clear()
         if self.text_html_highlighter is not None:
             self.text_html_highlighter.setDocument(None)
             self.text_html_highlighter = None
@@ -1076,7 +1089,7 @@ class MainWindow(QMainWindow):
         self.text_pair_flip[index] = not self.text_pair_flip[index]
         forward, reverse = self.text_pair_definitions[index][1:]
         operation = reverse if self.text_pair_flip[index] else forward
-        previous_output = self.output_editor.toPlainText()
+        previous_output = self._plain_text_result()
         self.text_operation.setCurrentIndex(self.text_operation.findData(operation))
         if previous_output.strip():
             self.input_editor.setPlainText(previous_output)
@@ -1126,6 +1139,7 @@ class MainWindow(QMainWindow):
         self.output_tree_button.setEnabled(False)
         self.text_copy_btn.setEnabled(False)
         self.text_html_mode = False
+        self._html_folded_blocks.clear()
         self.text_fold_btn.hide()
         self.text_unfold_btn.hide()
         self.text_status.setText("Đã xóa nội dung")
@@ -1200,82 +1214,115 @@ class MainWindow(QMainWindow):
                 depth += 1
         return None
 
-    def toggle_html_block(self, block_number):
-        if not self.text_html_mode:
-            return
-        doc = self.output_editor.document()
+    def _html_document_blocks(self):
         blocks = []
-        block = doc.firstBlock()
+        block = self.output_editor.document().firstBlock()
         while block.isValid():
             blocks.append(block)
             block = block.next()
-        if block_number >= len(blocks):
-            return
-        block = blocks[block_number]
+        return blocks
+
+    def _html_matching_close(self, blocks, open_index, tag):
+        depth = 1
+        escaped_tag = re.escape(tag)
+        close_re = re.compile(r"</\s*" + escaped_tag + r"\s*>", re.I)
+        open_re = re.compile(r"<\s*" + escaped_tag + r"\b", re.I)
+        for index in range(open_index + 1, len(blocks)):
+            line = blocks[index].text()
+            if close_re.search(line):
+                depth -= 1
+                if depth == 0:
+                    return index
+            elif open_re.search(line) and not line.strip().endswith("/>"):
+                depth += 1
+        return None
+
+    def _set_html_block_marker(self, block, marker):
         line = block.text()
-        if line.lstrip().startswith("▼ "):
-            folded = True
-            updated = line.replace("▼ ", "▶ ", 1)
-        elif line.lstrip().startswith("▶ "):
-            folded = False
-            updated = line.replace("▶ ", "▼ ", 1)
-        else:
+        stripped = line.lstrip()
+        if not stripped.startswith(("▼ ", "▶ ")):
             return
+        updated = line[:len(line) - len(stripped)] + marker + stripped[2:]
         cursor = self.output_editor.textCursor()
         cursor.setPosition(block.position())
         cursor.movePosition(cursor.MoveOperation.EndOfBlock, cursor.MoveMode.KeepAnchor)
         cursor.insertText(updated)
-        tag_match = re.search(r"<\s*([\w:-]+)\b", updated)
-        if not tag_match:
-            return
-        end_index = self._html_matching_close(blocks, block_number, tag_match.group(1))
-        if end_index is None:
-            return
-        for index in range(block_number + 1, end_index + 1):
-            blocks[index].setVisible(not folded)
-            blocks[index].setLineCount(1 if not folded else 0)
+
+    def _apply_html_fold_state(self, blocks=None):
+        if blocks is None:
+            blocks = self._html_document_blocks()
+        hidden = set()
+        for open_index in tuple(self._html_folded_blocks):
+            if open_index < 0 or open_index >= len(blocks):
+                continue
+            match = re.search(r"<\s*([\w:-]+)\b", blocks[open_index].text())
+            if not match:
+                continue
+            end_index = self._html_matching_close(blocks, open_index, match.group(1))
+            if end_index is not None:
+                hidden.update(range(open_index + 1, end_index + 1))
+
+        doc = self.output_editor.document()
+        for index, block in enumerate(blocks):
+            is_hidden = index in hidden
+            block.setVisible(not is_hidden)
+            block.setLineCount(0 if is_hidden else max(1, block.layout().lineCount()))
         doc.markContentsDirty(0, doc.characterCount())
         self.output_editor.viewport().update()
+
+    def toggle_html_block(self, block_number):
+        if not self.text_html_mode:
+            return
+        blocks = self._html_document_blocks()
+        if block_number < 0 or block_number >= len(blocks):
+            return
+        line = blocks[block_number].text().lstrip()
+        if line.startswith("▼ "):
+            self._html_folded_blocks.add(block_number)
+            self._set_html_block_marker(blocks[block_number], "▶ ")
+        elif line.startswith("▶ "):
+            self._html_folded_blocks.discard(block_number)
+            self._set_html_block_marker(blocks[block_number], "▼ ")
+        else:
+            return
+        self._apply_html_fold_state()
 
     def fold_html_output(self):
         if not self.text_html_mode:
             return
-        doc = self.output_editor.document()
-        blocks = []
-        block = doc.firstBlock()
-        while block.isValid():
-            blocks.append(block)
-            block = block.next()
+        blocks = self._html_document_blocks()
+        self._html_folded_blocks = {
+            index for index, block in enumerate(blocks)
+            if block.text().lstrip().startswith("▼ ")
+        }
         for index, block in enumerate(blocks):
-            if block.text().lstrip().startswith("▼ "):
-                self.toggle_html_block(index)
+            if index in self._html_folded_blocks:
+                self._set_html_block_marker(block, "▶ ")
+        self._apply_html_fold_state(blocks)
         self.text_status.setText("Đã thu gọn các thẻ HTML")
 
     def unfold_html_output(self):
         if not self.text_html_mode:
             return
-        doc = self.output_editor.document()
-        blocks = []
-        block = doc.firstBlock()
-        while block.isValid():
-            blocks.append(block)
-            block = block.next()
-        for index, block in enumerate(blocks):
-            if block.text().lstrip().startswith("▶ "):
-                self.toggle_html_block(index)
+        blocks = self._html_document_blocks()
+        self._html_folded_blocks.clear()
         for block in blocks:
-            block.setVisible(True)
-            block.setLineCount(1)
-        doc.markContentsDirty(0, doc.characterCount())
-        self.output_editor.viewport().update()
+            if block.text().lstrip().startswith("▶ "):
+                self._set_html_block_marker(block, "▼ ")
+        self._apply_html_fold_state()
         self.text_status.setText("Đã mở rộng tất cả thẻ HTML")
 
-    def copy_text_result(self):
+    def _plain_text_result(self):
+        """Return result text with UI-only HTML folding markers removed."""
         value = self.output_editor.toPlainText()
+        if self.text_html_mode:
+            value = re.sub(r"^([ \\t]*)[▼▶] ", r"\\1", value, flags=re.MULTILINE)
+        return value
+
+    def copy_text_result(self):
+        value = self._plain_text_result()
         if not value:
             return
-        if self.text_html_mode:
-            value = re.sub(r"^([ \t]*)[▼▶] ", r"\1", value, flags=re.MULTILINE)
         QApplication.clipboard().setText(value)
         self.text_status.setText("Đã sao chép kết quả")
 
