@@ -29,6 +29,25 @@ class TextConversionTests(unittest.TestCase):
         result = process_text("string_to_xml", escaped)
         self.assertIn("<root>", result["output"])
 
+    def test_html_to_quoted_string_and_back(self):
+        source = '<div class="greeting">Hello\\n<span>FileForge</span></div>'
+        encoded = process_text("html_to_string", source)["output"]
+        self.assertEqual(encoded, '"<div class=\\"greeting\\">Hello\\\\n<span>FileForge</span></div>"')
+
+        decoded = process_text("string_to_html", encoded)["output"]
+        self.assertIn('<div class="greeting">', decoded)
+        self.assertIn('  <span>', decoded)
+        self.assertIn('    FileForge', decoded)
+        self.assertIn('  </span>', decoded)
+        self.assertIn('</div>', decoded)
+
+    def test_string_to_html_accepts_raw_html_and_rejects_non_html(self):
+        raw = process_text("string_to_html", "<main><p>Hi</p></main>")["output"]
+        self.assertIn("<main>", raw)
+        self.assertIn("  <p>", raw)
+        with self.assertRaisesRegex(ValueError, "Không tìm thấy thẻ HTML"):
+            process_text("string_to_html", "just a string")
+
     def test_handles_one_hundred_fifty_thousand_character_value(self):
         payload = '{"message":"' + ("x" * 150000) + '"}'
         formatted = process_text("format_json", payload)
