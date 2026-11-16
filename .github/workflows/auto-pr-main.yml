@@ -1,0 +1,63 @@
+name: Auto Pull Request to main
+
+on:
+  push:
+    branches:
+      - feature/encode
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: auto-pr-feature-encode
+  cancel-in-progress: false
+
+jobs:
+  create-pull-request:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create PR if one is not already open
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const head = `${owner}:feature/encode`;
+            const base = "main";
+
+            const { data: openPullRequests } = await github.rest.pulls.list({
+              owner,
+              repo,
+              state: "open",
+              head,
+              base,
+              per_page: 100
+            });
+
+            if (openPullRequests.length > 0) {
+              core.info(`PR #${openPullRequests[0].number} is already open: ${openPullRequests[0].html_url}`);
+              return;
+            }
+
+            const { data: pullRequest } = await github.rest.pulls.create({
+              owner,
+              repo,
+              head: "feature/encode",
+              base,
+              title: "FileForge: update tools and Windows build pipeline",
+              body: [
+                "## Summary",
+                "- Update FileForge encoding/encryption tools and related UI.",
+                "- Add CI checks for the application.",
+                "- Add a Windows EXE build that runs only after a PR is merged into `main`.",
+                "",
+                "## Build artifact",
+                "After this PR is merged into `main`, open Actions → Build Windows EXE → the successful run → Artifacts to download `FileForge.exe`.",
+                "",
+                "Please review the checks and changes before merging."
+              ].join("\\n"),
+              maintainer_can_modify: true
+            });
+
+            core.notice(`Created PR #${pullRequest.number}: ${pullRequest.html_url}`);
