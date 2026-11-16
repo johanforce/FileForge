@@ -4,6 +4,7 @@ from __future__ import annotations
 import base64
 import binascii
 import secrets
+import string
 from urllib.parse import quote, unquote
 
 from cryptography.hazmat.primitives import padding
@@ -42,7 +43,11 @@ def _encode_bytes(value: bytes, fmt: str) -> str:
 def generate_aes_key(bits: int = 256, fmt: str = "Base64") -> str:
     if bits not in (128, 192, 256):
         raise ValueError("AES key phải có độ dài 128, 192 hoặc 256 bit.")
-    return _encode_bytes(secrets.token_bytes(bits // 8), fmt)
+    raw = secrets.token_bytes(bits // 8)
+    if fmt == "Plain Text":
+        alphabet = string.ascii_letters + string.digits
+        return "".join(secrets.choice(alphabet) for _ in range(bits // 8))
+    return _encode_bytes(raw, fmt)
 
 
 def generate_iv(mode: str = "GCM", fmt: str = "Hex") -> str:
