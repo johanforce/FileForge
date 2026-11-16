@@ -81,7 +81,7 @@ class CryptoUtilsTests(unittest.TestCase):
         # AES-128 with an all-zero key and block. For CBC/CTR, use an
         # all-zero IV/counter so the first output block equals AES_K(0^128).
         key = "00" * 16
-        plaintext = "\\x00" * 16
+        plaintext = "\x00" * 16
         expected_block = "66e94bd4ef8a2c3b884cfa59ca342b2e"
 
         for mode in ("ECB", "CBC", "CTR"):
@@ -97,7 +97,7 @@ class CryptoUtilsTests(unittest.TestCase):
         # one 128-bit zero plaintext block. AESGCM output is ciphertext||tag.
         key = "00" * 16
         iv = "00" * 12
-        plaintext = "\\x00" * 16
+        plaintext = "\x00" * 16
         expected = (
             "0388dace60b6a392f328c2b971b2fe78"
             "ab6e47d42cec13bdf53a67b21257bddf"
