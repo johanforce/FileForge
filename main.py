@@ -1410,7 +1410,8 @@ class MainWindow(QMainWindow):
             )
             set_language(selected_language)
             if selected_language != previous_language:
-                self.on_mode_changed(self.tabs.currentIndex())
+                # Re-translate existing widgets without rebuilding the current
+                # operation panel or resetting an active task's progress UI.
                 translate_object_tree(self)
                 QMessageBox.information(
                     self,
