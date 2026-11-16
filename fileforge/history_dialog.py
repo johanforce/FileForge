@@ -199,7 +199,7 @@ class TaskHistoryDialog(QDialog):
             title = "Task details"
         else:
             lines = [
-                f"Tác vụ: {record['operation']}",
+                f"Tác vụ: {translate_text(record['operation'])}",
                 f"Trạng thái: {status_text}",
                 f"Thời gian: {record['created_at'].replace('T', ' ')}",
                 f"Số tệp đầu vào: {record['input_count']}",
@@ -218,7 +218,7 @@ class TaskHistoryDialog(QDialog):
                 lines.extend(["", "Chi tiết lỗi:", record["error_message"]])
             title = "Chi tiết tác vụ"
         QMessageBox.information(
-            self, "Chi tiết tác vụ", "\n".join(lines)
+            self, title, "\n".join(lines)
         )
 
     @staticmethod
