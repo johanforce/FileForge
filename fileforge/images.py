@@ -8,6 +8,8 @@ from typing import Callable, Iterable
 
 from PIL import Image, ImageOps
 
+from fileforge.task_control import TaskCancelledError, raise_if_cancelled
+
 
 SUPPORTED_IMAGE_EXTENSIONS = {
     ".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff"
@@ -52,6 +54,7 @@ def convert_images(
     output_format: str,
     quality: int = 90,
     progress: Callable[[int, int, str], None] | None = None,
+    is_cancelled: Callable[[], bool] | None = None,
 ) -> tuple[list[Path], list[tuple[str, str]]]:
     """Convert a batch of images, continuing past individual file failures."""
     if output_format not in OUTPUT_FORMATS:
@@ -69,12 +72,14 @@ def convert_images(
     errors: list[tuple[str, str]] = []
 
     for index, source in enumerate(paths, start=1):
+        raise_if_cancelled(is_cancelled)
         try:
             if source.suffix.lower() not in SUPPORTED_IMAGE_EXTENSIONS:
                 raise ValueError("Định dạng ảnh đầu vào chưa được hỗ trợ.")
 
             with Image.open(source) as original:
                 original.load()
+                raise_if_cancelled(is_cancelled)
                 image = ImageOps.exif_transpose(original)
                 icc_profile = image.info.get("icc_profile")
                 exif = image.info.get("exif")
@@ -89,6 +94,7 @@ def convert_images(
                 os.close(fd)
                 temporary_path = Path(temporary_name)
                 try:
+                    raise_if_cancelled(is_cancelled)
                     options: dict[str, object] = {}
                     if pillow_format in ("JPEG", "WEBP"):
                         options["quality"] = quality
@@ -109,16 +115,20 @@ def convert_images(
                         format=pillow_format,
                         **options,
                     )
+                    raise_if_cancelled(is_cancelled)
                     os.replace(temporary_path, output_path)
                     outputs.append(output_path)
                 finally:
                     temporary_path.unlink(missing_ok=True)
                 if converted is not image:
                     converted.close()
+        except TaskCancelledError:
+            raise
         except Exception as exc:
             errors.append((str(source), str(exc)))
         finally:
             if progress:
                 progress(index, len(paths), source.name)
 
+    raise_if_cancelled(is_cancelled)
     return outputs, errors
