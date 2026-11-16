@@ -31,7 +31,7 @@ class UISmokeTests(unittest.TestCase):
         window.show()
         self.app.processEvents()
 
-        self.assertEqual(window.tabs.count(), 6)
+        self.assertEqual(window.tabs.count(), 8)
         window.tabs.setCurrentIndex(3)
         self.app.processEvents()
         self.assertEqual(window.mode, "text")
@@ -157,7 +157,7 @@ class UISmokeTests(unittest.TestCase):
         window.show()
         self.app.processEvents()
 
-        self.assertEqual(window.tabs.count(), 6)
+        self.assertEqual(window.tabs.count(), 8)
         window.tabs.setCurrentIndex(4)
         self.app.processEvents()
         self.assertEqual(window.mode, "compare")
@@ -187,7 +187,7 @@ class UISmokeTests(unittest.TestCase):
         window = MainWindow()
         window.show()
         self.app.processEvents()
-        self.assertEqual(window.tabs.count(), 6)
+        self.assertEqual(window.tabs.count(), 8)
         window.tabs.setCurrentIndex(5)
         self.app.processEvents()
         self.assertEqual(window.mode, "curl")
