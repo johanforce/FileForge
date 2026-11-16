@@ -2104,36 +2104,38 @@ class MainWindow(QMainWindow):
 
         title = QLabel("AES Encryption / Decryption")
         title.setObjectName("Brand")
-        subtitle = QLabel("Mã hóa cục bộ bằng AES-GCM (khuyến nghị) hoặc AES-CBC")
+        subtitle = QLabel("Chọn riêng giao diện Encode hoặc Decode · xử lý hoàn toàn offline")
         subtitle.setObjectName("Muted")
         layout.addWidget(title)
         layout.addWidget(subtitle)
 
         settings = QHBoxLayout()
         self.aes_mode = StyledComboBox()
-        self.aes_mode.addItems(["GCM", "CBC"])
-        self.aes_mode.setMinimumWidth(105)
+        self.aes_mode.addItems(["CBC", "GCM", "CTR", "ECB"])
+        self.aes_mode.setCurrentText("GCM")
+        self.aes_padding = StyledComboBox()
+        self.aes_padding.addItems(["NoPadding", "PKCS5Padding"])
         self.aes_key_bits = StyledComboBox()
         self.aes_key_bits.addItems(["128", "192", "256"])
         self.aes_key_bits.setCurrentText("256")
         self.aes_key_format = StyledComboBox()
-        self.aes_key_format.addItems(["Base64", "Hex", "Plain Text"])
-        self.aes_output_format = StyledComboBox()
-        self.aes_output_format.addItems(["Base64", "Hex"])
+        self.aes_key_format.addItems(["UTF-8", "HEX", "BASE-64"])
+        self.aes_iv_format = StyledComboBox()
+        self.aes_iv_format.addItems(["UTF-8", "HEX", "BASE-64"])
         for label, widget in (
-            ("Mode", self.aes_mode), ("Key size", self.aes_key_bits),
-            ("Key format", self.aes_key_format), ("Output", self.aes_output_format),
+            ("Cipher mode", self.aes_mode), ("Padding", self.aes_padding),
+            ("Key size", self.aes_key_bits), ("Key format", self.aes_key_format),
+            ("IV format", self.aes_iv_format),
         ):
             settings.addWidget(QLabel(label))
             settings.addWidget(widget)
-        settings.addStretch()
         layout.addLayout(settings)
 
         key_row = QHBoxLayout()
         key_row.addWidget(QLabel("KEY"))
         self.aes_key_input = QLineEdit()
         self.aes_key_input.setEchoMode(QLineEdit.EchoMode.Password)
-        self.aes_key_input.setPlaceholderText("Nhập key hoặc tạo key ngẫu nhiên…")
+        self.aes_key_input.setPlaceholderText("Key theo định dạng đã chọn…")
         key_row.addWidget(self.aes_key_input, 1)
         self.aes_show_key = QCheckBox("Hiện")
         self.aes_show_key.toggled.connect(
@@ -2148,87 +2150,171 @@ class MainWindow(QMainWindow):
         layout.addLayout(key_row)
 
         iv_row = QHBoxLayout()
-        iv_row.addWidget(QLabel("IV / NONCE (HEX)"))
+        self.aes_iv_label = QLabel("IV / NONCE")
+        iv_row.addWidget(self.aes_iv_label)
         self.aes_iv_input = QLineEdit()
-        self.aes_iv_input.setPlaceholderText("Tự tạo khi Encrypt; nhập lại IV này để Decrypt")
+        self.aes_iv_input.setPlaceholderText("Tự sinh khi Encode; lưu lại để Decode")
         iv_row.addWidget(self.aes_iv_input, 1)
-        gen_iv = QPushButton("Tạo IV")
-        gen_iv.clicked.connect(self.generate_aes_iv_ui)
-        iv_row.addWidget(gen_iv)
+        self.aes_generate_iv_btn = QPushButton("Tạo IV")
+        self.aes_generate_iv_btn.clicked.connect(self.generate_aes_iv_ui)
+        iv_row.addWidget(self.aes_generate_iv_btn)
         layout.addLayout(iv_row)
+
+        self.aes_action_tabs = QTabWidget()
+        self.aes_encode_input, self.aes_encode_output = self._build_aes_editor_page(
+            "PLAINTEXT INPUT", "Nhập plaintext cần mã hóa…",
+            "CIPHERTEXT OUTPUT", "Ciphertext sẽ xuất hiện ở đây…",
+        )
+        self.aes_decode_input, self.aes_decode_output = self._build_aes_editor_page(
+            "CIPHERTEXT INPUT", "Dán ciphertext cần giải mã…",
+            "PLAINTEXT / BASE64 OUTPUT", "Kết quả giải mã sẽ xuất hiện ở đây…",
+        )
+        self.aes_action_tabs.addTab(self._build_aes_action_page(
+            self.aes_encode_input, self.aes_encode_output, "encode"
+        ), "1. Encode")
+        self.aes_action_tabs.addTab(self._build_aes_action_page(
+            self.aes_decode_input, self.aes_decode_output, "decode"
+        ), "2. Decode")
+        layout.addWidget(self.aes_action_tabs, 1)
+
+        self.aes_status = QLabel("Sẵn sàng")
+        self.aes_status.setObjectName("Muted")
+        layout.addWidget(self.aes_status)
+
+        warning = QLabel(
+            "GCM có xác thực và nên được ưu tiên; GCM/CTR chỉ dùng NoPadding. "
+            "CBC/ECB hỗ trợ NoPadding hoặc PKCS5Padding (PKCS7 cho block AES). "
+            "ECB không dùng IV và không an toàn cho dữ liệu thực tế; CBC/CTR cũng không tự xác thực ciphertext."
+        )
+        warning.setObjectName("Muted")
+        warning.setWordWrap(True)
+        layout.addWidget(warning)
+
+        self.aes_mode.currentTextChanged.connect(self.on_aes_mode_changed)
+        self.aes_key_bits.currentTextChanged.connect(self.on_aes_key_bits_changed)
+        self.on_aes_mode_changed(self.aes_mode.currentText())
+        return panel
+
+    def _build_aes_editor_page(self, input_title, input_placeholder, output_title, output_placeholder):
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(4, 8, 4, 4)
+        layout.setSpacing(8)
 
         editors = QSplitter(Qt.Orientation.Horizontal)
         left = QWidget()
         left_layout = QVBoxLayout(left)
         left_layout.setContentsMargins(0, 0, 0, 0)
-        left_label = QLabel("PLAINTEXT / CIPHERTEXT INPUT")
+        left_label = QLabel(input_title)
         left_label.setObjectName("Section")
         left_layout.addWidget(left_label)
-        self.aes_input = QPlainTextEdit()
-        self.aes_input.setObjectName("CodeEditor")
-        self.aes_input.setPlaceholderText("Nhập văn bản cần mã hóa hoặc ciphertext cần giải mã…")
-        left_layout.addWidget(self.aes_input, 1)
+        input_editor = QPlainTextEdit()
+        input_editor.setObjectName("CodeEditor")
+        input_editor.setPlaceholderText(input_placeholder)
+        left_layout.addWidget(input_editor, 1)
+
         right = QWidget()
         right_layout = QVBoxLayout(right)
         right_layout.setContentsMargins(0, 0, 0, 0)
-        right_label = QLabel("RESULT")
+        right_label = QLabel(output_title)
         right_label.setObjectName("Section")
         right_layout.addWidget(right_label)
-        self.aes_output = QPlainTextEdit()
-        self.aes_output.setObjectName("CodeEditor")
-        self.aes_output.setReadOnly(True)
-        self.aes_output.setPlaceholderText("Kết quả sẽ xuất hiện ở đây…")
-        right_layout.addWidget(self.aes_output, 1)
+        output_editor = QPlainTextEdit()
+        output_editor.setObjectName("CodeEditor")
+        output_editor.setReadOnly(True)
+        output_editor.setPlaceholderText(output_placeholder)
+        right_layout.addWidget(output_editor, 1)
         editors.addWidget(left)
         editors.addWidget(right)
         layout.addWidget(editors, 1)
+        return input_editor, output_editor
 
-        actions = QHBoxLayout()
-        self.aes_status = QLabel("Sẵn sàng")
-        self.aes_status.setObjectName("Muted")
-        actions.addWidget(self.aes_status)
-        actions.addStretch()
-        encrypt_btn = QPushButton("Encrypt  →")
-        encrypt_btn.setObjectName("Primary")
-        encrypt_btn.clicked.connect(self.encrypt_aes_ui)
-        decrypt_btn = QPushButton("←  Decrypt")
-        decrypt_btn.clicked.connect(self.decrypt_aes_ui)
-        copy_btn = QPushButton("Copy")
-        copy_btn.clicked.connect(lambda: self.copy_tool_output(self.aes_output, self.aes_status))
-        clear_btn = QPushButton("Xóa")
-        clear_btn.clicked.connect(lambda: self.clear_tool_text(self.aes_input, self.aes_output, self.aes_status))
-        for button in (encrypt_btn, decrypt_btn, copy_btn, clear_btn):
-            actions.addWidget(button)
-        layout.addLayout(actions)
+    def _build_aes_action_page(self, input_editor, output_editor, action):
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(input_editor.parentWidget().parentWidget() if False else QWidget()) if False else None
+        # Editors are already parented into their dedicated splitter; this page
+        # receives the splitter through the editor's container.
+        editor_splitter = input_editor.parentWidget().parentWidget()
+        if isinstance(editor_splitter, QSplitter):
+            layout.addWidget(editor_splitter, 1)
 
-        warning = QLabel("Lưu ý: GCM xác thực dữ liệu và phát hiện ciphertext bị sửa. Không bao giờ tái sử dụng cùng nonce với cùng key. CBC không có xác thực; chỉ dùng khi cần tương thích hệ thống cũ.")
-        warning.setObjectName("Muted")
-        warning.setWordWrap(True)
-        layout.addWidget(warning)
-        self.aes_mode.currentTextChanged.connect(self.on_aes_mode_changed)
-        return panel
+        options = QHBoxLayout()
+        if action == "encode":
+            options.addWidget(QLabel("Ciphertext output"))
+            self.aes_encode_format = StyledComboBox()
+            self.aes_encode_format.addItems(["Base64", "Hex"])
+            options.addWidget(self.aes_encode_format)
+            run = QPushButton("Encrypt  →")
+            run.setObjectName("Primary")
+            run.clicked.connect(self.encrypt_aes_ui)
+        else:
+            options.addWidget(QLabel("Ciphertext input"))
+            self.aes_decode_input_format = StyledComboBox()
+            self.aes_decode_input_format.addItems(["Base64", "Hex"])
+            options.addWidget(self.aes_decode_input_format)
+            options.addSpacing(12)
+            options.addWidget(QLabel("Decode output"))
+            self.aes_decode_output_format = StyledComboBox()
+            self.aes_decode_output_format.addItems(["Plaintext", "Base64"])
+            options.addWidget(self.aes_decode_output_format)
+            run = QPushButton("←  Decrypt")
+            run.setObjectName("Primary")
+            run.clicked.connect(self.decrypt_aes_ui)
+
+        options.addStretch()
+        copy = QPushButton("Copy output")
+        copy.clicked.connect(lambda: self.copy_tool_output(output_editor, self.aes_status))
+        clear = QPushButton("Xóa")
+        clear.clicked.connect(lambda: self.clear_tool_text(input_editor, output_editor, self.aes_status))
+        options.addWidget(run)
+        options.addWidget(copy)
+        options.addWidget(clear)
+        layout.addLayout(options)
+        return page
 
     def _aes_key_format_value(self):
         return self.aes_key_format.currentText()
 
     def generate_aes_key_ui(self):
         try:
-            fmt = self._aes_key_format_value()
-            self.aes_key_input.setText(generate_aes_key(int(self.aes_key_bits.currentText()), fmt))
+            self.aes_key_input.setText(
+                generate_aes_key(int(self.aes_key_bits.currentText()), self._aes_key_format_value())
+            )
             self.aes_status.setText("Đã tạo key ngẫu nhiên an toàn")
         except ValueError as exc:
             self.aes_status.setText(str(exc))
 
     def generate_aes_iv_ui(self):
-        self.aes_iv_input.setText(generate_iv(self.aes_mode.currentText(), "Hex"))
+        mode = self.aes_mode.currentText()
+        if mode == "ECB":
+            self.aes_iv_input.clear()
+            self.aes_status.setText("ECB không sử dụng IV")
+            return
+        self.aes_iv_input.setText(generate_iv(mode, self.aes_iv_format.currentText()))
         self.aes_status.setText("Đã tạo IV/nonce ngẫu nhiên")
 
+    def on_aes_key_bits_changed(self, _value):
+        # A UTF-8 key generated by this tool uses ASCII characters, one byte each.
+        self.aes_key_input.clear()
+
     def on_aes_mode_changed(self, mode):
+        stream_mode = mode in ("GCM", "CTR")
+        self.aes_padding.setEnabled(not stream_mode)
+        if stream_mode:
+            self.aes_padding.setCurrentText("NoPadding")
+        is_ecb = mode == "ECB"
+        self.aes_iv_input.setEnabled(not is_ecb)
+        self.aes_iv_label.setEnabled(not is_ecb)
+        self.aes_generate_iv_btn.setEnabled(not is_ecb)
         self.aes_iv_input.clear()
-        self.aes_iv_input.setPlaceholderText(
-            "12 byte / 24 ký tự Hex (GCM)" if mode == "GCM"
-            else "16 byte / 32 ký tự Hex (CBC)"
-        )
+        if mode == "GCM":
+            self.aes_iv_input.setPlaceholderText("GCM khuyến nghị IV 12 byte")
+        elif mode in ("CBC", "CTR"):
+            self.aes_iv_input.setPlaceholderText("IV/counter 16 byte")
+        else:
+            self.aes_iv_input.setPlaceholderText("ECB không sử dụng IV")
 
     def _aes_arguments(self):
         key = self.aes_key_input.text()
@@ -2236,31 +2322,37 @@ class MainWindow(QMainWindow):
             raise ValueError("Vui lòng nhập hoặc tạo AES key.")
         return (
             key, self._aes_key_format_value(), self.aes_mode.currentText(),
-            self.aes_iv_input.text(), self.aes_output_format.currentText(),
+            self.aes_iv_input.text(), self.aes_iv_format.currentText(),
+            self.aes_padding.currentText(),
         )
 
     def encrypt_aes_ui(self):
         try:
-            key, key_format, mode, iv, output_format = self._aes_arguments()
+            key, key_format, mode, iv, iv_format, padding_name = self._aes_arguments()
+            output_format = self.aes_encode_format.currentText()
             encrypted, used_iv = aes_encrypt(
-                self.aes_input.toPlainText(), key, key_format, mode, iv, output_format
+                self.aes_encode_input.toPlainText(), key, key_format, mode, iv,
+                output_format, iv_format, padding_name,
             )
-            self.aes_iv_input.setText(used_iv)
-            self.aes_output.setPlainText(encrypted)
-            self.aes_status.setText("Mã hóa thành công · hãy lưu lại key và IV/nonce")
+            if mode != "ECB":
+                self.aes_iv_input.setText(used_iv)
+            self.aes_encode_output.setPlainText(encrypted)
+            self.aes_status.setText("Encode thành công · lưu lại key và IV/nonce để Decode")
         except Exception as exc:
-            self.aes_status.setText(f"Không thể mã hóa: {exc}")
+            self.aes_status.setText(f"Không thể encode: {exc}")
 
     def decrypt_aes_ui(self):
         try:
-            key, key_format, mode, iv, output_format = self._aes_arguments()
+            key, key_format, mode, iv, iv_format, padding_name = self._aes_arguments()
             decrypted = aes_decrypt(
-                self.aes_input.toPlainText().strip(), key, key_format, mode, iv, output_format
+                self.aes_decode_input.toPlainText().strip(), key, key_format, mode, iv,
+                self.aes_decode_input_format.currentText(), iv_format, padding_name,
+                self.aes_decode_output_format.currentText(),
             )
-            self.aes_output.setPlainText(decrypted)
-            self.aes_status.setText("Giải mã thành công")
+            self.aes_decode_output.setPlainText(decrypted)
+            self.aes_status.setText("Decode thành công")
         except Exception as exc:
-            self.aes_status.setText(f"Không thể giải mã: {exc}")
+            self.aes_status.setText(f"Không thể decode: {exc}")
 
     @staticmethod
     def copy_tool_output(output, status):
