@@ -353,15 +353,15 @@ def get_language() -> str:
 
 def translate_text(value: Any) -> Any:
     """Translate a UI string while leaving arbitrary non-string values untouched."""
-    if not isinstance(value, str) or _current_language == "vi":
-        if isinstance(value, str) and _current_language == "vi":
-            return _REVERSE.get(value, value)
+    if not isinstance(value, str):
         return value
+    if _current_language == "vi":
+        translated = _REVERSE.get(value)
+        return translated if translated is not None else _translate_dynamic(value)
     translated = ENGLISH.get(value)
     if translated is not None:
         return translated
     return _translate_dynamic(value)
-
 
 def _translate_dynamic(value: str) -> str:
     """Translate common status and task labels that contain runtime values."""
