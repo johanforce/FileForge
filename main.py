@@ -87,6 +87,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from fileforge import __version__ as APP_VERSION
+from fileforge.i18n import get_language, set_language, translate_object_tree, translate_text
+
 from fileforge.archive import create_zip
 from fileforge.extraction import extract_archives
 from fileforge.images import SUPPORTED_IMAGE_EXTENSIONS, convert_images
@@ -792,8 +795,8 @@ class DropArea(QFrame):
         )
 
     def set_instruction(self, title: str, hint: str):
-        self.title.setText(title)
-        self.hint.setText(hint)
+        self.title.setText(translate_text(title))
+        self.hint.setText(translate_text(hint))
 
     def _set_drag_active(self, active: bool):
         self.setProperty("dragActive", active)
@@ -977,7 +980,7 @@ class ScrollableTabWidget(QWidget):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("FileForge")
+        self.setWindowTitle(f"FileForge v{APP_VERSION}")
         self.setWindowIcon(load_app_icon())
         self.settings = QSettings("JohanForce", APP_NAME)
         self.settings.setFallbacksEnabled(False)
@@ -1130,8 +1133,9 @@ class MainWindow(QMainWindow):
         controls.addWidget(self.compression_label)
 
         self.compression = StyledComboBox()
-        self.compression.addItems(list(COMPRESSION_OPTIONS.keys()))
-        self.compression.setCurrentText("Cân bằng")
+        for label, compression_code in COMPRESSION_OPTIONS.items():
+            self.compression.addItem(label, compression_code)
+        self.compression.setCurrentIndex(max(0, self.compression.findData("Balanced")))
         controls.addWidget(self.compression)
 
         self.extract_hint = QLabel("Mỗi tệp ZIP sẽ được giải nén vào một thư mục riêng")
@@ -1229,6 +1233,7 @@ class MainWindow(QMainWindow):
                 self.tabs.setCurrentIndex(saved_tab)
         self.on_mode_changed(self.tabs.currentIndex())
         self.refresh_queue()
+        translate_object_tree(self)
 
     def _build_menu_bar(self):
         app_menu = self.menuBar().addMenu("FileForge")
@@ -1375,9 +1380,13 @@ class MainWindow(QMainWindow):
         ):
             return
 
-        compression = self.settings.value("operations/compression", "Cân bằng")
-        if compression in COMPRESSION_OPTIONS:
-            self.compression.setCurrentText(compression)
+        compression = self.settings.value("operations/compression", "Balanced")
+        compression_index = self.compression.findData(compression)
+        if compression_index < 0:
+            # Compatibility with preferences saved by pre-1.0.0 builds.
+            compression_index = self.compression.findText(str(compression))
+        if compression_index >= 0:
+            self.compression.setCurrentIndex(compression_index)
 
         output_format = self.settings.value("operations/image_format", "JPG")
         if output_format in {"JPG", "PNG", "WEBP"}:
@@ -1482,7 +1491,7 @@ class MainWindow(QMainWindow):
             "preferences/remember_operation_options", True, type=bool
         ):
             self.settings.setValue(
-                "operations/compression", self.compression.currentText()
+                "operations/compression", self.compression.currentData() or "Balanced"
             )
             self.settings.setValue(
                 "operations/image_format", self.format_combo.currentText()
@@ -3416,7 +3425,7 @@ class MainWindow(QMainWindow):
                 return
             if not destination.lower().endswith(".zip"):
                 destination += ".zip"
-            compression = COMPRESSION_OPTIONS[self.compression.currentText()]
+            compression = str(self.compression.currentData() or "Balanced")
         elif self.mode == "extract":
             destination = QFileDialog.getExistingDirectory(
                 self, "Chọn nơi giải nén", self._output_start_directory()
