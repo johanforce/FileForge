@@ -4,6 +4,7 @@ import zipfile
 from pathlib import Path
 
 from fileforge.archive import create_zip
+from fileforge.task_control import TaskCancelledError
 
 
 class ArchiveTests(unittest.TestCase):
@@ -37,6 +38,28 @@ class ArchiveTests(unittest.TestCase):
             source.write_text("a", encoding="utf-8")
             with self.assertRaises(ValueError):
                 create_zip([source], Path(tmp) / "x.zip", "Unknown")
+
+    def test_cancellation_preserves_existing_archive_and_removes_temporary_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "large.bin"
+            source.write_bytes(b"x" * (3 * 1024 * 1024))
+            target = root / "out.zip"
+            target.write_bytes(b"previous archive")
+            calls = 0
+
+            def cancel_after_first_chunk():
+                nonlocal calls
+                calls += 1
+                return calls >= 3
+
+            with self.assertRaises(TaskCancelledError):
+                create_zip(
+                    [source], target, is_cancelled=cancel_after_first_chunk
+                )
+
+            self.assertEqual(target.read_bytes(), b"previous archive")
+            self.assertEqual(list(root.glob(".out.zip.*.tmp")), [])
 
     def test_existing_destination_is_preserved_on_failure(self):
         with tempfile.TemporaryDirectory() as tmp:
