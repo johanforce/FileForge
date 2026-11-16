@@ -5,6 +5,7 @@ from pathlib import Path
 from PIL import Image
 
 from fileforge.images import convert_images
+from fileforge.task_control import TaskCancelledError
 
 
 class ImageConversionTests(unittest.TestCase):
@@ -40,6 +41,28 @@ class ImageConversionTests(unittest.TestCase):
             with Image.open(outputs[0]) as result:
                 self.assertEqual(result.format, "WEBP")
                 self.assertEqual(result.size, (12, 9))
+
+    def test_cancellation_does_not_publish_partial_image_output(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "photo.png"
+            Image.new("RGB", (32, 32), (20, 40, 60)).save(source)
+            output_dir = root / "out"
+            calls = 0
+
+            def cancel_before_publish():
+                nonlocal calls
+                calls += 1
+                return calls >= 4
+
+            with self.assertRaises(TaskCancelledError):
+                convert_images(
+                    [source], output_dir, "JPG", 90,
+                    is_cancelled=cancel_before_publish,
+                )
+
+            self.assertEqual(list(output_dir.glob("*.jpg")), [])
+            self.assertEqual(list(output_dir.glob(".fileforge-image-*")), [])
 
     def test_continues_after_corrupt_image_and_avoids_overwrite(self):
         with tempfile.TemporaryDirectory() as tmp:
