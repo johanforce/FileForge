@@ -37,6 +37,16 @@
 - Giao diện theo Material Design 3; vùng Input/Output dùng nền tối và tô màu cú pháp theo phong cách Android Studio cho JSON, Java, Kotlin và C; HTML có tô màu cú pháp, tách dòng thuộc tính khi có nhiều thuộc tính, click marker ▼/▶ để thu gọn từng thẻ, nút thu gọn/mở rộng tất cả, tìm kiếm, Copy và bật/tắt Wrap.\n- Phím tắt: Ctrl+Enter để chuyển đổi, Ctrl+F để tìm trong ô đang focus (Input hoặc Output), Esc để đóng tìm kiếm.
 - Hỗ trợ object lồng nhau, mảng, trường có thể thiếu và giá trị null; JSON root dạng mảng/scalar được bọc trong `root`.
 
+### URL Encoder / Decoder
+- Mã hóa/giải mã URL và URI Component theo UTF-8; giữ nguyên dấu `+` khi decode.
+- Hỗ trợ encode/decode trực tiếp, đổi bên, sao chép và xóa nội dung.
+
+### AES Encrypt / Decrypt
+- AES-128/192/256 với AES-GCM (mặc định, có xác thực) và AES-CBC (tương thích hệ thống cũ).
+- Key ngẫu nhiên an toàn, định dạng key Plain Text/Base64/Hex; ciphertext đầu ra Base64 hoặc Hex.
+- IV/nonce được tạo ngẫu nhiên và hiển thị để lưu lại; giải mã yêu cầu đúng key và IV.
+- Xử lý hoàn toàn offline. Với GCM, thay đổi ciphertext sẽ làm giải mã thất bại. Không tái sử dụng nonce với cùng key. CBC không có xác thực dữ liệu.
+
 ### Compare String / JSON Diff
 - Compare String: so sánh hai bản văn bản theo dòng, từ hoặc ký tự; tô màu phần thêm và xóa, thống kê phần thêm/xóa/sửa.
 - Tùy chọn bỏ qua chữ hoa/thường, khoảng trắng và dòng trống; có thể đổi hai bên hoặc xóa nhanh nội dung.
