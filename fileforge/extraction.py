@@ -150,13 +150,13 @@ def extract_archives(
                     total_size,
                     path.name,
                 )
-        except TaskCancelledError:
+        except TaskCancelledError as exc:
+            exc.completed_outputs = [str(output) for output in outputs]
             raise
         except Exception as exc:
             errors.append((str(path), str(exc)))
             completed_before += archive_size
 
-    raise_if_cancelled(is_cancelled)
     if progress:
         progress(total_size, total_size, "Hoàn tất")
     return outputs, errors
