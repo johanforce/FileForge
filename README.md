@@ -2,6 +2,10 @@
 
 Ứng dụng desktop gọn nhẹ để gom tệp, nén/giải nén ZIP, chuyển đổi ảnh và xử lý JSON/XML. Xây dựng bằng Python và PySide6.
 
+> **Phiên bản: 1.0.0** · Giao diện hỗ trợ **Tiếng Việt** và **English**. Mở **FileForge → Tùy chọn → Ngôn ngữ** để thay đổi; lựa chọn được lưu cho lần mở sau.
+>
+> [Read this guide in English](README.en.md) · [MIT License](LICENSE) · [Acknowledgments](ACKNOWLEDGMENTS.md)
+
 ## Tính năng
 
 ### Nén ZIP
@@ -178,3 +182,11 @@ Nếu workflow `Auto Pull Request to main` báo lỗi `GitHub Actions is not per
 4. Vào **Actions → Auto Pull Request to main**, chọn lần chạy bị lỗi và bấm **Re-run jobs**.
 
 Workflow chỉ tạo PR từ `feature/encode` vào `main`; nếu đã có PR đang mở thì không tạo trùng.
+
+
+## Phiên bản, ngôn ngữ và giấy phép
+
+- Phiên bản ứng dụng: **1.0.0** (được khai báo tập trung trong `fileforge/__init__.py` và hiển thị trong cửa sổ/About).
+- Ngôn ngữ giao diện hiện có: Tiếng Việt và English; ngôn ngữ được lưu trong Tùy chọn.
+- Mã nguồn FileForge được phát hành theo MIT License; giấy phép và thông báo của thư viện bên thứ ba được liệt kê riêng trong [ACKNOWLEDGMENTS.md](ACKNOWLEDGMENTS.md).
+- Xem [README tiếng Anh](README.en.md) để đọc hướng dẫn bằng English.
