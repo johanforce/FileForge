@@ -42,10 +42,13 @@
 - Hỗ trợ encode/decode trực tiếp, đổi bên, sao chép và xóa nội dung.
 
 ### AES Encrypt / Decrypt
-- AES-128/192/256 với AES-GCM (mặc định, có xác thực) và AES-CBC (tương thích hệ thống cũ).
-- Key ngẫu nhiên an toàn, định dạng key Plain Text/Base64/Hex; ciphertext đầu ra Base64 hoặc Hex.
-- IV/nonce được tạo ngẫu nhiên và hiển thị để lưu lại; giải mã yêu cầu đúng key và IV.
-- Xử lý hoàn toàn offline. Với GCM, thay đổi ciphertext sẽ làm giải mã thất bại. Không tái sử dụng nonce với cùng key. CBC không có xác thực dữ liệu.
+- Giao diện tách thành hai màn hình riêng: Encode và Decode.
+- AES-128/192/256; cipher mode gồm CBC, GCM, CTR và ECB.
+- Padding gồm NoPadding và PKCS5Padding (triển khai PKCS7 tương đương cho block AES). GCM và CTR chỉ hỗ trợ NoPadding.
+- Key và IV hỗ trợ UTF-8, HEX và BASE-64; có công cụ sinh key/IV ngẫu nhiên.
+- Encode: ciphertext đầu ra Base64 hoặc Hex. Decode: ciphertext đầu vào Base64 hoặc Hex, kết quả Plaintext hoặc Base64.
+- ECB không sử dụng IV. CBC cần IV 16 byte; CTR cần counter 16 byte; GCM khuyến nghị nonce 12 byte.
+- Xử lý hoàn toàn offline. GCM xác thực ciphertext; không tái sử dụng nonce với cùng key. CBC/CTR/ECB không tự xác thực dữ liệu; ECB không nên dùng cho dữ liệu nhạy cảm.
 
 ### Compare String / JSON Diff
 - Compare String: so sánh hai bản văn bản theo dòng, từ hoặc ký tự; tô màu phần thêm và xóa, thống kê phần thêm/xóa/sửa.
