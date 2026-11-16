@@ -1820,7 +1820,7 @@ class MainWindow(QMainWindow):
         self.input_tree.clear()
         if self.input_pane["stack"].currentIndex() == 1:
             self.input_pane["stack"].setCurrentIndex(0)
-        self.text_status.setText("Nội dung đã thay đổi · hãy thực hiện lại để xem cấu trúc")
+        self.text_status.setText(translate_text("Nội dung đã thay đổi · hãy thực hiện lại để xem cấu trúc"))
 
     def run_text_action(self):
         if self.text_busy:
@@ -1829,7 +1829,7 @@ class MainWindow(QMainWindow):
         source = self.input_editor.toPlainText()
         if not source.strip():
             QMessageBox.information(
-                self, "Chưa có dữ liệu", "Dán JSON hoặc XML vào ô đầu vào trước."
+                self, translate_text("Chưa có dữ liệu"), translate_text("Dán JSON hoặc XML vào ô đầu vào trước.")
             )
             return
 
@@ -1840,7 +1840,7 @@ class MainWindow(QMainWindow):
         operation_label = self.text_operation.currentText()
         input_character_count = len(source)
         self._text_task_context = {
-            "operation": f"Xử lý dữ liệu: {operation_label}",
+            "operation": translate_text(f"Xử lý dữ liệu: {operation_label}"),
             "input_character_count": input_character_count,
             "started_at": time.perf_counter(),
         }
@@ -1856,7 +1856,7 @@ class MainWindow(QMainWindow):
         self.text_copy_btn.setEnabled(False)
         self.input_editor.setReadOnly(True)
         self.text_progress.show()
-        self.text_status.setText("Đang xử lý trong luồng nền…")
+        self.text_status.setText(translate_text("Đang xử lý trong luồng nền…"))
 
         self.text_worker = TextTaskWorker(
             operation,
@@ -1921,7 +1921,7 @@ class MainWindow(QMainWindow):
             self.output_pane["stack"].setCurrentIndex(0)
 
         size = len(self.input_editor.toPlainText())
-        self.text_status.setText(f"Hoàn tất · {size:,} ký tự đầu vào")
+        self.text_status.setText(translate_text(f"Hoàn tất · {size:,} ký tự đầu vào"))
         self.text_execute_btn.setEnabled(True)
         self.text_copy_btn.setEnabled(bool(result["output"]))
         input_count = (
@@ -1931,11 +1931,11 @@ class MainWindow(QMainWindow):
         output_count = len(result["output"])
         self._record_text_task_history(
             "success",
-            f"{input_count:,} ký tự đầu vào → {output_count:,} ký tự đầu ra",
+            translate_text(f"{input_count:,} ký tự đầu vào → {output_count:,} ký tự đầu ra"),
         )
         self._notify_user(
-            "Hoàn tất xử lý dữ liệu",
-            f"{input_count:,} → {output_count:,} ký tự",
+            translate_text("Hoàn tất xử lý dữ liệu"),
+            translate_text(f"{input_count:,} → {output_count:,} ký tự"),
         )
 
     def on_text_failed(self, message: str):
@@ -1944,21 +1944,21 @@ class MainWindow(QMainWindow):
         self.text_execute_btn.setEnabled(True)
         self.input_editor.setReadOnly(False)
         self.text_progress.hide()
-        self.text_status.setText("Không thể xử lý · kiểm tra dữ liệu đầu vào")
+        self.text_status.setText(translate_text("Không thể xử lý · kiểm tra dữ liệu đầu vào"))
         self.logger.warning("Text operation failed; input details are not written to logs")
         self._record_text_task_history(
             "failed",
-            "Không thể xử lý dữ liệu đầu vào",
+            translate_text("Không thể xử lý dữ liệu đầu vào"),
         )
         self._notify_user(
-            "Xử lý dữ liệu thất bại",
-            "Kiểm tra cú pháp JSON/XML/HTML",
+            translate_text("Xử lý dữ liệu thất bại"),
+            translate_text("Kiểm tra cú pháp JSON/XML/HTML"),
         )
         if self.isVisible() and not self.isMinimized():
             QMessageBox.warning(
                 self,
-                "Dữ liệu chưa hợp lệ",
-                "Không thể xử lý nội dung. Kiểm tra cú pháp JSON/XML/HTML rồi thử lại.\n\n"
+                translate_text("Dữ liệu chưa hợp lệ"),
+                translate_text("Không thể xử lý nội dung. Kiểm tra cú pháp JSON/XML/HTML rồi thử lại.\n\n")
                 + message,
             )
 
@@ -1993,7 +1993,7 @@ class MainWindow(QMainWindow):
         self.input_editor.setLineWrapMode(mode)
         self.output_editor.setLineWrapMode(mode)
         self.text_wrap_btn.setText(
-            "Wrap: Bật" if self.text_wrap_enabled else "Wrap: Tắt"
+            translate_text("Wrap: Bật" if self.text_wrap_enabled else "Wrap: Tắt")
         )
 
     def toggle_text_layout(self):
@@ -2001,7 +2001,7 @@ class MainWindow(QMainWindow):
         self.text_splitter.setOrientation(
             Qt.Orientation.Vertical if vertical else Qt.Orientation.Horizontal
         )
-        self.text_layout_btn.setText("Xếp ngang" if vertical else "Xếp dọc")
+        self.text_layout_btn.setText(translate_text("Xếp ngang" if vertical else "Xếp dọc"))
 
     def copy_text_input(self):
         value = self.input_editor.toPlainText()
@@ -2181,7 +2181,7 @@ class MainWindow(QMainWindow):
             if index in self._html_folded_blocks:
                 self._set_html_block_marker(block, "▶ ")
         self._apply_html_fold_state(blocks)
-        self.text_status.setText("Đã thu gọn các thẻ HTML")
+        self.text_status.setText(translate_text("Đã thu gọn các thẻ HTML"))
 
     def unfold_html_output(self):
         if not self.text_html_mode:
@@ -2192,7 +2192,7 @@ class MainWindow(QMainWindow):
             if block.text().lstrip().startswith("▶ "):
                 self._set_html_block_marker(block, "▼ ")
         self._apply_html_fold_state()
-        self.text_status.setText("Đã mở rộng tất cả thẻ HTML")
+        self.text_status.setText(translate_text("Đã mở rộng tất cả thẻ HTML"))
 
     def _plain_text_result(self):
         """Return conversion output, never the UI-only HTML fold decorations."""
@@ -2208,7 +2208,7 @@ class MainWindow(QMainWindow):
         if not value:
             return
         QApplication.clipboard().setText(value)
-        self.text_status.setText("Đã sao chép kết quả")
+        self.text_status.setText(translate_text("Đã sao chép kết quả"))
 
     @staticmethod
     def format_size(size: int) -> str:
@@ -2372,20 +2372,20 @@ class MainWindow(QMainWindow):
                 body_override=body_override if body_override != "" else None,
             )
         except ValueError as exc:
-            self.curl_status.setText("Không thể phân tích request")
-            QMessageBox.warning(self, "Request chưa hợp lệ", str(exc))
+            self.curl_status.setText(translate_text("Không thể phân tích request"))
+            QMessageBox.warning(self, translate_text("Request chưa hợp lệ"), str(exc))
             return
         self.curl_output.setPlainText(parsed["curl"])
         body_status = " · có body" if parsed.get("body") else ""
         self.curl_status.setText(
-            f"Đã nhận diện {parsed['method']} · {len(parsed['headers'])} headers{body_status}"
+            translate_text(f"Đã nhận diện {parsed['method']} · {len(parsed['headers'])} headers{body_status}")
         )
 
     def copy_curl_result(self):
         value = self.curl_output.toPlainText()
         if value:
             QApplication.clipboard().setText(value)
-            self.curl_status.setText("Đã sao chép lệnh cURL")
+            self.curl_status.setText(translate_text("Đã sao chép lệnh cURL"))
 
     def build_url_panel(self):
         panel = QFrame()
@@ -2460,15 +2460,15 @@ class MainWindow(QMainWindow):
         try:
             result = url_encode(self.url_input.toPlainText(), self.url_component_mode.isChecked())
             self.url_output.setPlainText(result)
-            self.url_status.setText("Đã encode URL")
+            self.url_status.setText(translate_text("Đã encode URL"))
         except (ValueError, UnicodeError) as exc:
-            self.url_status.setText(f"Lỗi: {exc}")
+            self.url_status.setText(translate_text(f"Lỗi: {exc}"))
 
     def decode_url(self):
         try:
             result = url_decode(self.url_input.toPlainText())
             self.url_output.setPlainText(result)
-            self.url_status.setText("Đã decode URL")
+            self.url_status.setText(translate_text("Đã decode URL"))
         except (ValueError, UnicodeError) as exc:
             self.url_status.setText(f"Lỗi: {exc}")
 
@@ -2651,9 +2651,9 @@ class MainWindow(QMainWindow):
                 generate_aes_key(int(self.aes_key_bits.currentText()), key_format)
             )
             if key_format == "UTF-8":
-                self.aes_status.setText("Đã tạo key UTF-8 tiện nhập; entropy thấp hơn HEX/Base-64. Nên dùng HEX/Base-64 cho key ngẫu nhiên.")
+                self.aes_status.setText(translate_text("Đã tạo key UTF-8 tiện nhập; entropy thấp hơn HEX/Base-64. Nên dùng HEX/Base-64 cho key ngẫu nhiên."))
             else:
-                self.aes_status.setText("Đã tạo key ngẫu nhiên bằng CSPRNG")
+                self.aes_status.setText(translate_text("Đã tạo key ngẫu nhiên bằng CSPRNG"))
         except ValueError as exc:
             self.aes_status.setText(str(exc))
 
@@ -2661,14 +2661,14 @@ class MainWindow(QMainWindow):
         mode = self.aes_mode.currentText()
         if mode == "ECB":
             self.aes_iv_input.clear()
-            self.aes_status.setText("ECB không sử dụng IV")
+            self.aes_status.setText(translate_text("ECB không sử dụng IV"))
             return
         iv_format = self.aes_iv_format.currentText()
         self.aes_iv_input.setText(generate_iv(mode, iv_format))
         if iv_format == "UTF-8":
-            self.aes_status.setText("Đã tạo IV UTF-8 tiện nhập; entropy thấp hơn HEX/Base-64. Nên dùng HEX/Base-64 cho IV ngẫu nhiên.")
+            self.aes_status.setText(translate_text("Đã tạo IV UTF-8 tiện nhập; entropy thấp hơn HEX/Base-64. Nên dùng HEX/Base-64 cho IV ngẫu nhiên."))
         else:
-            self.aes_status.setText("Đã tạo IV/nonce ngẫu nhiên bằng CSPRNG")
+            self.aes_status.setText(translate_text("Đã tạo IV/nonce ngẫu nhiên bằng CSPRNG"))
 
     def on_aes_key_bits_changed(self, _value):
         # A UTF-8 key generated by this tool uses ASCII characters, one byte each.
@@ -2685,16 +2685,16 @@ class MainWindow(QMainWindow):
         self.aes_generate_iv_btn.setEnabled(not is_ecb)
         self.aes_iv_input.clear()
         if mode == "GCM":
-            self.aes_iv_input.setPlaceholderText("GCM khuyến nghị IV 12 byte")
+            self.aes_iv_input.setPlaceholderText(translate_text("GCM khuyến nghị IV 12 byte"))
         elif mode in ("CBC", "CTR"):
-            self.aes_iv_input.setPlaceholderText("IV/counter 16 byte")
+            self.aes_iv_input.setPlaceholderText(translate_text("IV/counter 16 byte"))
         else:
-            self.aes_iv_input.setPlaceholderText("ECB không sử dụng IV")
+            self.aes_iv_input.setPlaceholderText(translate_text("ECB không sử dụng IV"))
 
     def _aes_arguments(self):
         key = self.aes_key_input.text()
         if not key:
-            raise ValueError("Vui lòng nhập hoặc tạo AES key.")
+            raise ValueError(translate_text("Vui lòng nhập hoặc tạo AES key."))
         return (
             key, self._aes_key_format_value(), self.aes_mode.currentText(),
             self.aes_iv_input.text(), self.aes_iv_format.currentText(),
@@ -2712,9 +2712,9 @@ class MainWindow(QMainWindow):
             if mode != "ECB":
                 self.aes_iv_input.setText(used_iv)
             self.aes_encode_output.setPlainText(encrypted)
-            self.aes_status.setText("Encode thành công · lưu lại key và IV/nonce để Decode")
+            self.aes_status.setText(translate_text("Encode thành công · lưu lại key và IV/nonce để Decode"))
         except Exception as exc:
-            self.aes_status.setText(f"Không thể encode: {exc}")
+            self.aes_status.setText(translate_text(f"Không thể encode: {exc}"))
 
     def decrypt_aes_ui(self):
         try:
@@ -2725,16 +2725,16 @@ class MainWindow(QMainWindow):
                 self.aes_decode_output_format.currentText(),
             )
             self.aes_decode_output.setPlainText(decrypted)
-            self.aes_status.setText("Decode thành công")
+            self.aes_status.setText(translate_text("Decode thành công"))
         except Exception as exc:
-            self.aes_status.setText(f"Không thể decode: {exc}")
+            self.aes_status.setText(translate_text(f"Không thể decode: {exc}"))
 
     @staticmethod
     def copy_tool_output(output, status):
         value = output.toPlainText()
         if value:
             QApplication.clipboard().setText(value)
-            status.setText("Đã sao chép")
+            status.setText(translate_text("Đã sao chép"))
 
     @staticmethod
     def swap_tool_text(source, output):
@@ -2967,7 +2967,7 @@ class MainWindow(QMainWindow):
                 content = Path(path).read_text(encoding="utf-8-sig")
                 target = self.json_before if side == "before" else self.json_after
                 target["editor"].setPlainText(content)
-                self.json_diff_status.setText(f"Đã nạp {Path(path).name}")
+                self.json_diff_status.setText(translate_text(f"Đã nạp {Path(path).name}"))
             except (OSError, UnicodeError) as exc:
                 QMessageBox.warning(self, "Không thể mở JSON", str(exc))
         combo.blockSignals(True)
@@ -2978,7 +2978,7 @@ class MainWindow(QMainWindow):
         before = self.string_before["editor"].toPlainText()
         after = self.string_after["editor"].toPlainText()
         if not before and not after:
-            self.string_diff_summary.setText("Hãy nhập nội dung ở cả hai bên")
+            self.string_diff_summary.setText(translate_text("Hãy nhập nội dung ở cả hai bên"))
             return
         try:
             result = compare_text(
@@ -3008,7 +3008,7 @@ class MainWindow(QMainWindow):
             style + "<pre>" + result["after_html"] + "</pre>"
         )
         self.string_diff_summary.setText(
-            f"Thêm {result['added']} · Xóa {result['removed']} · Sửa {result['changed']}"
+            translate_text(f"Thêm {result['added']} · Xóa {result['removed']} · Sửa {result['changed']}")
         )
 
     def swap_string_compare(self):
@@ -3022,13 +3022,13 @@ class MainWindow(QMainWindow):
         self.string_after["editor"].clear()
         self.string_before_result.clear()
         self.string_after_result.clear()
-        self.string_diff_summary.setText("Đã xóa nội dung")
+        self.string_diff_summary.setText(translate_text("Đã xóa nội dung"))
 
     def run_json_diff(self):
         before = self.json_before["editor"].toPlainText()
         after = self.json_after["editor"].toPlainText()
         if not before.strip() or not after.strip():
-            self.json_diff_status.setText("Hãy nhập JSON ở cả hai bên")
+            self.json_diff_status.setText(translate_text("Hãy nhập JSON ở cả hai bên"))
             return
         try:
             result = compare_json(
@@ -3038,7 +3038,7 @@ class MainWindow(QMainWindow):
             )
         except ValueError as exc:
             QMessageBox.warning(self, "JSON không hợp lệ", str(exc))
-            self.json_diff_status.setText("Kiểm tra JSON đầu vào")
+            self.json_diff_status.setText(translate_text("Kiểm tra JSON đầu vào"))
             return
 
         self._json_diff_result = result
@@ -3072,7 +3072,7 @@ class MainWindow(QMainWindow):
         self.filter_json_diff_rows()
         self.json_copy_report_btn.setEnabled(bool(result["differences"]))
         self.json_diff_status.setText(
-            "Hai tài liệu giống nhau" if not result["differences"] else "So sánh hoàn tất"
+            translate_text("Hai tài liệu giống nhau") if not result["differences"] else translate_text("So sánh hoàn tất")
         )
 
     def filter_json_diff_rows(self):
@@ -3116,8 +3116,8 @@ class MainWindow(QMainWindow):
         self.json_after["editor"].clear()
         self.json_diff_table.setRowCount(0)
         self._json_diff_result = None
-        self.json_diff_summary.setText("Object key được so sánh không phụ thuộc thứ tự")
-        self.json_diff_status.setText("Đã xóa nội dung")
+        self.json_diff_summary.setText(translate_text("Object key được so sánh không phụ thuộc thứ tự"))
+        self.json_diff_status.setText(translate_text("Đã xóa nội dung"))
         self.json_copy_report_btn.setEnabled(False)
 
     def copy_json_diff_report(self):
@@ -3126,7 +3126,7 @@ class MainWindow(QMainWindow):
         text = format_text_diff_report(self._json_diff_result)
         if text:
             QApplication.clipboard().setText(text)
-            self.json_diff_status.setText("Đã sao chép báo cáo")
+            self.json_diff_status.setText(translate_text("Đã sao chép báo cáo"))
 
     def _show_tool_panel(self, tool: str):
         self.mode = tool
@@ -3144,9 +3144,11 @@ class MainWindow(QMainWindow):
     def on_mode_changed(self, index: int):
         if index == 4:
             self._show_tool_panel("url")
+            translate_object_tree(self)
             return
         if index == 5:
             self._show_tool_panel("aes")
+            translate_object_tree(self)
             return
 
         self.url_panel.hide()
@@ -3162,6 +3164,7 @@ class MainWindow(QMainWindow):
             self.action_panel.hide()
             self.compare_panel.hide()
             self.text_panel.show()
+            translate_object_tree(self)
             return
 
         if index == 2:
@@ -3174,6 +3177,7 @@ class MainWindow(QMainWindow):
             self.action_panel.hide()
             self.text_panel.hide()
             self.compare_panel.show()
+            translate_object_tree(self)
             return
 
         if index == 3:
@@ -3186,6 +3190,7 @@ class MainWindow(QMainWindow):
             self.text_panel.hide()
             self.compare_panel.hide()
             self.curl_panel.show()
+            translate_object_tree(self)
             return
 
         self.curl_panel.hide()
@@ -3252,6 +3257,7 @@ class MainWindow(QMainWindow):
         self.update_quality_state()
         self.progress_area.hide()
         self.refresh_queue()
+        translate_object_tree(self)
 
     def update_quality_state(self):
         enabled = self.mode == "image" and self.format_combo.currentText() != "PNG"
