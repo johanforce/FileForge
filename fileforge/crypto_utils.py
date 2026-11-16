@@ -30,7 +30,7 @@ def url_decode(value: str) -> str:
 def _decode_bytes(value: str, fmt: str, field: str) -> bytes:
     try:
         normalized = fmt.upper()
-        if normalized in ("HEX", "HEX"):
+        if normalized == "HEX":
             return bytes.fromhex(value.strip())
         if normalized in ("BASE-64", "BASE64"):
             return base64.b64decode(value.strip(), validate=True)
