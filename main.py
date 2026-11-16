@@ -972,6 +972,7 @@ class MainWindow(QMainWindow):
         self.logger = configure_app_logging(self.app_data_dir)
         self.history_store = TaskHistoryStore(self.app_data_dir / "history.sqlite3")
         self._task_context: dict | None = None
+        self._text_task_context: dict | None = None
         self._force_quit = False
         self.tray_icon: QSystemTrayIcon | None = None
         self.resize(1040, 740)
@@ -1322,6 +1323,28 @@ class MainWindow(QMainWindow):
             self.logger.exception("Could not write task history")
         finally:
             self._task_context = None
+
+    def _record_text_task_history(self, status: str, summary: str):
+        context = self._text_task_context
+        if not context:
+            return
+        duration_ms = int((time.perf_counter() - context["started_at"]) * 1000)
+        try:
+            self.history_store.record(
+                operation=context["operation"],
+                status=status,
+                inputs=["Dữ liệu văn bản"],
+                duration_ms=duration_ms,
+                summary=summary,
+            )
+            self.logger.info(
+                "Text task finished: operation=%s status=%s duration_ms=%d",
+                context["operation"], status, duration_ms,
+            )
+        except Exception:
+            self.logger.exception("Could not write text task history")
+        finally:
+            self._text_task_context = None
 
     def _restore_saved_options(self):
         if not self.settings.value(
@@ -1765,6 +1788,18 @@ class MainWindow(QMainWindow):
         class_name = self.text_class_name.text().strip() or "RootModel"
         model_target = self.text_model_target.currentData()
         indent_size = int(self.text_indent.currentData())
+        operation_label = self.text_operation.currentText()
+        input_character_count = len(source)
+        self._text_task_context = {
+            "operation": f"Xử lý dữ liệu: {operation_label}",
+            "input_character_count": input_character_count,
+            "started_at": time.perf_counter(),
+        }
+        self.logger.info(
+            "Text task started: operation=%s input_characters=%d",
+            operation_label,
+            input_character_count,
+        )
 
         self.text_busy = True
         self.tabs.setEnabled(False)
@@ -1840,6 +1875,19 @@ class MainWindow(QMainWindow):
         self.text_status.setText(f"Hoàn tất · {size:,} ký tự đầu vào")
         self.text_execute_btn.setEnabled(True)
         self.text_copy_btn.setEnabled(bool(result["output"]))
+        input_count = (
+            self._text_task_context["input_character_count"]
+            if self._text_task_context else size
+        )
+        output_count = len(result["output"])
+        self._record_text_task_history(
+            "success",
+            f"{input_count:,} ký tự đầu vào → {output_count:,} ký tự đầu ra",
+        )
+        self._notify_user(
+            "Hoàn tất xử lý dữ liệu",
+            f"{input_count:,} → {output_count:,} ký tự",
+        )
 
     def on_text_failed(self, message: str):
         self.text_busy = False
@@ -1848,12 +1896,22 @@ class MainWindow(QMainWindow):
         self.input_editor.setReadOnly(False)
         self.text_progress.hide()
         self.text_status.setText("Không thể xử lý · kiểm tra dữ liệu đầu vào")
-        QMessageBox.warning(
-            self,
-            "Dữ liệu chưa hợp lệ",
-            "Không thể xử lý nội dung. Kiểm tra cú pháp JSON/XML/HTML rồi thử lại.\n\n"
-            + message,
+        self.logger.warning("Text operation failed; input details are not written to logs")
+        self._record_text_task_history(
+            "failed",
+            "Không thể xử lý dữ liệu đầu vào",
         )
+        self._notify_user(
+            "Xử lý dữ liệu thất bại",
+            "Kiểm tra cú pháp JSON/XML/HTML",
+        )
+        if self.isVisible() and not self.isMinimized():
+            QMessageBox.warning(
+                self,
+                "Dữ liệu chưa hợp lệ",
+                "Không thể xử lý nội dung. Kiểm tra cú pháp JSON/XML/HTML rồi thử lại.\n\n"
+                + message,
+            )
 
 
     def swap_text_direction(self):
