@@ -10,6 +10,8 @@ import zipfile
 from pathlib import Path, PurePosixPath
 from typing import Callable, Iterable
 
+from fileforge.task_control import TaskCancelledError, raise_if_cancelled
+
 
 def _member_destination(root: Path, info: zipfile.ZipInfo) -> Path:
     """Resolve one ZIP member and reject traversal, absolute paths and symlinks."""
@@ -51,6 +53,7 @@ def _extract_one(
     progress: Callable[[int, int, str], None] | None,
     completed_before: int,
     total_all: int,
+    is_cancelled: Callable[[], bool] | None = None,
 ) -> tuple[Path, int]:
     if not zipfile.is_zipfile(archive_path):
         raise zipfile.BadZipFile("Tệp không phải ZIP hợp lệ.")
@@ -66,8 +69,12 @@ def _extract_one(
         with zipfile.ZipFile(archive_path, "r") as archive:
             infos = archive.infolist()
             # Validate the complete member list before writing any content.
-            destinations = [(info, _member_destination(temporary_folder, info)) for info in infos]
+            destinations = []
+            for info in infos:
+                raise_if_cancelled(is_cancelled)
+                destinations.append((info, _member_destination(temporary_folder, info)))
             for info, target in destinations:
+                raise_if_cancelled(is_cancelled)
                 if info.is_dir():
                     target.mkdir(parents=True, exist_ok=True)
                     continue
@@ -77,6 +84,7 @@ def _extract_one(
                 target.parent.mkdir(parents=True, exist_ok=True)
                 with archive.open(info, "r") as source, target.open("xb") as output:
                     while True:
+                        raise_if_cancelled(is_cancelled)
                         chunk = source.read(1024 * 1024)
                         if not chunk:
                             break
@@ -89,6 +97,7 @@ def _extract_one(
                                 info.filename,
                             )
 
+        raise_if_cancelled(is_cancelled)
         os.replace(temporary_folder, final_folder)
         return final_folder, completed
     except Exception:
@@ -100,6 +109,7 @@ def extract_archives(
     archive_paths: Iterable[str | Path],
     destination: str | Path,
     progress: Callable[[int, int, str], None] | None = None,
+    is_cancelled: Callable[[], bool] | None = None,
 ) -> tuple[list[Path], list[tuple[str, str]]]:
     """Extract each archive into its own folder; report per-archive failures."""
     target = Path(destination).expanduser().resolve()
@@ -110,6 +120,7 @@ def extract_archives(
     total_size = 0
 
     for raw in archive_paths:
+        raise_if_cancelled(is_cancelled)
         path = Path(raw).expanduser().resolve()
         try:
             if not path.is_file() or not zipfile.is_zipfile(path):
@@ -118,15 +129,18 @@ def extract_archives(
                 size = sum(info.file_size for info in archive.infolist() if not info.is_dir())
             valid_archives.append((path, size))
             total_size += size
+        except TaskCancelledError:
+            raise
         except Exception as exc:
             errors.append((str(path), str(exc)))
 
     outputs: list[Path] = []
     completed_before = 0
     for path, archive_size in valid_archives:
+        raise_if_cancelled(is_cancelled)
         try:
             extracted, actual_size = _extract_one(
-                path, target, progress, completed_before, total_size
+                path, target, progress, completed_before, total_size, is_cancelled
             )
             outputs.append(extracted)
             completed_before += archive_size
@@ -136,10 +150,13 @@ def extract_archives(
                     total_size,
                     path.name,
                 )
+        except TaskCancelledError:
+            raise
         except Exception as exc:
             errors.append((str(path), str(exc)))
             completed_before += archive_size
 
+    raise_if_cancelled(is_cancelled)
     if progress:
         progress(total_size, total_size, "Hoàn tất")
     return outputs, errors
