@@ -1,14 +1,9 @@
+import os
 import tempfile
 import unittest
 from pathlib import Path
 
-os_imported = False
-try:
-    import os
-    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-    os_imported = True
-except Exception:
-    pass
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import QSettings
 from PySide6.QtWidgets import QApplication
@@ -41,6 +36,7 @@ class PreferencesDialogTests(unittest.TestCase):
             dialog.remember_last_directory.setChecked(False)
             dialog.remember_operation_options.setChecked(True)
             dialog.output_directory.setText(str(output_dir))
+            self.assertTrue(dialog.is_output_directory_valid())
             dialog.save_to_settings()
 
             self.assertTrue(settings.value("preferences/restore_session", type=bool))
@@ -55,16 +51,25 @@ class PreferencesDialogTests(unittest.TestCase):
             )
             dialog.close()
 
-    def test_invalid_output_directory_is_not_saved(self):
+    def test_invalid_output_directory_fails_validation(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             settings = QSettings(
                 str(Path(temp_dir) / "settings.ini"), QSettings.Format.IniFormat
             )
-            settings.setValue("paths/default_output_directory", "")
             dialog = PreferencesDialog(settings)
             dialog.output_directory.setText(str(Path(temp_dir) / "missing"))
-            dialog.save_to_settings()
-            self.assertEqual(settings.value("paths/default_output_directory"), "")
+            self.assertFalse(dialog.is_output_directory_valid())
+            self.assertEqual(settings.value("paths/default_output_directory"), None)
+            dialog.close()
+
+    def test_empty_output_directory_is_allowed(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            settings = QSettings(
+                str(Path(temp_dir) / "settings.ini"), QSettings.Format.IniFormat
+            )
+            dialog = PreferencesDialog(settings)
+            dialog.output_directory.clear()
+            self.assertTrue(dialog.is_output_directory_valid())
             dialog.close()
 
 
