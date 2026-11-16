@@ -31,7 +31,7 @@ def _decode_bytes(value: str, fmt: str, field: str) -> bytes:
             return bytes.fromhex(value.strip())
         if normalized in ("BASE-64", "BASE64"):
             return base64.b64decode(value.strip(), validate=True)
-        if normalized in ("UTF-8", "PLAIN TEXT"):
+        if normalized in ("UTF-8", "PLAIN TEXT", "PLAINTEXT"):
             return value.encode("utf-8")
         raise ValueError(f"Định dạng {fmt} không được hỗ trợ.")
     except (ValueError, binascii.Error) as exc:
