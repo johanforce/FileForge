@@ -44,7 +44,7 @@ def _encode_bytes(value: bytes, fmt: str) -> str:
         return value.hex()
     if normalized in ("BASE-64", "BASE64"):
         return base64.b64encode(value).decode("ascii")
-    if normalized in ("UTF-8", "PLAIN TEXT"):
+    if normalized in ("UTF-8", "PLAIN TEXT", "PLAINTEXT"):
         try:
             return value.decode("utf-8")
         except UnicodeDecodeError as exc:
