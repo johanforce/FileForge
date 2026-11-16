@@ -1,12 +1,12 @@
-# FileForge — Product Brief
+# FileForge 1.0.0 — Product Brief
 
-## 1. Mục tiêu sản phẩm
+**Phiên bản hiện tại: 1.0.0** · **Ngôn ngữ giao diện:** Tiếng Việt và English.\n\n## 1. Mục tiêu sản phẩm
 
 FileForge là ứng dụng desktop chạy cục bộ trên macOS, Windows và Linux. Mục tiêu là gom các thao tác xử lý tệp thường dùng vào một giao diện gọn, trực quan, ưu tiên hành động thay vì nội dung mô tả dài.
 
 ## 2. Nguyên tắc UX
 
-- Giao diện tiếng Việt, dark theme, ưu tiên vùng thao tác chính.
+- Giao diện hỗ trợ Tiếng Việt và English, dark theme, ưu tiên vùng thao tác chính. Ngôn ngữ được chọn trong Tùy chọn và lưu giữa các phiên.
 - Hạn chế text view và các bảng thống kê không cần thiết.
 - Các tác vụ chạy nền khi có thể; giao diện không bị khóa trong lúc xử lý.
 - Có phản hồi tiến trình, lỗi rõ ràng và đường dẫn kết quả.
@@ -101,7 +101,7 @@ Trình xem JSON:
 - JSON → Model: đã triển khai, hỗ trợ dataclass, Pydantic v2 và TypeScript.
 - Đóng gói .app/.dmg cho macOS: chưa triển khai.
 
-## 8. Ngoài phạm vi hiện tại
+## 8. Giấy phép và ghi nhận\n\n- Mã nguồn FileForge được phát hành theo MIT License (`LICENSE`).\n- Giấy phép và thông báo của các dependency được ghi trong `ACKNOWLEDGMENTS.md`; chúng không bị thay thế bởi giấy phép MIT của ứng dụng.\n- Hướng dẫn English: `README.en.md`.\n\n## 9. Ngoài phạm vi hiện tại
 
 - Convert PDF/Word/Excel.
 - Đồng bộ cloud hoặc upload file.
