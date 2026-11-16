@@ -273,14 +273,26 @@ class UISmokeTests(unittest.TestCase):
         self.app.processEvents()
         self.assertEqual(window.mode, "aes")
         self.assertTrue(window.aes_panel.isVisible())
+        self.assertEqual(window.aes_action_tabs.count(), 2)
+        self.assertEqual(
+            [window.aes_mode.itemText(i) for i in range(window.aes_mode.count())],
+            ["CBC", "GCM", "CTR", "ECB"],
+        )
+        self.assertEqual(
+            [window.aes_key_format.itemText(i) for i in range(window.aes_key_format.count())],
+            ["UTF-8", "HEX", "BASE-64"],
+        )
+
         window.generate_aes_key_ui()
-        window.aes_input.setPlainText("FileForge test")
+        window.aes_encode_input.setPlainText("FileForge test")
         window.encrypt_aes_ui()
-        encrypted = window.aes_output.toPlainText()
+        encrypted = window.aes_encode_output.toPlainText()
         self.assertTrue(encrypted)
-        window.aes_input.setPlainText(encrypted)
+
+        window.aes_action_tabs.setCurrentIndex(1)
+        window.aes_decode_input.setPlainText(encrypted)
         window.decrypt_aes_ui()
-        self.assertEqual(window.aes_output.toPlainText(), "FileForge test")
+        self.assertEqual(window.aes_decode_output.toPlainText(), "FileForge test")
 
         window.close()
         window.deleteLater()
