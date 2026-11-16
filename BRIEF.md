@@ -86,6 +86,10 @@ Trình xem JSON:
 - Nhật ký chẩn đoán dùng RotatingFileHandler, mỗi log tối đa khoảng 2 MB và giữ tối đa 3 bản sao cũ.
 - Menu FileForge cho phép mở lịch sử, thư mục cấu hình và thư mục log.
 - System tray và thông báo hoàn tất được bật khi môi trường desktop hỗ trợ; người dùng có thể chọn thu nhỏ xuống khay khi đóng cửa sổ.
+- Tác vụ ZIP, giải nén và chuyển ảnh hỗ trợ hủy hợp tác qua Event; không ép kết thúc QThread.
+- ZIP chỉ thay thế đích sau khi ghi/kiểm tra xong; hủy sẽ xóa tệp tạm và giữ nguyên đầu ra cũ. Giải nén dọn thư mục tạm của archive đang xử lý; ảnh chỉ được publish sau khi ghi xong.
+- Nếu batch đã tạo một số kết quả hoàn chỉnh trước khi hủy, các kết quả đó được giữ lại và ghi trong lịch sử với trạng thái `cancelled`.
+- Hủy được quan sát giữa các khối dữ liệu ZIP/giải nén và giữa các bước ảnh; một lệnh Pillow đang decode/encode có thể chỉ dừng tại điểm kiểm tra kế tiếp.
 - Khi có tác vụ nền đang chạy, yêu cầu thoát ứng dụng được từ chối để tránh hủy QThread đang hoạt động.
 
 ## 7. Trạng thái triển khai
