@@ -188,7 +188,7 @@ class TaskHistoryDialog(QDialog):
         if record["error_message"]:
             lines.extend(["", "Chi tiết lỗi:", record["error_message"]])
         QMessageBox.information(
-            self, "Chi tiết tác vụ", "\\n".join(lines)
+            self, "Chi tiết tác vụ", "\n".join(lines)
         )
 
     @staticmethod
