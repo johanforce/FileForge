@@ -2602,8 +2602,9 @@ class MainWindow(QMainWindow):
             label_widget.setObjectName("Muted")
             settings.addWidget(label_widget, 0, column * 2, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             widget.setMinimumWidth(112)
+            widget.setMaximumWidth(148)
             settings.addWidget(widget, 0, column * 2 + 1)
-        settings.setColumnStretch(5, 1)
+        settings.setColumnStretch(6, 1)
         layout.addLayout(settings)
 
         # KEY và định dạng của nó luôn cùng một dòng để tránh chọn nhầm format.
