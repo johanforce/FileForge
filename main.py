@@ -2571,7 +2571,11 @@ class MainWindow(QMainWindow):
         layout.addWidget(title)
         layout.addWidget(subtitle)
 
-        settings = QHBoxLayout()
+        # Các tham số thuật toán nằm trong một hàng gọn; label luôn sát control.
+        settings = QGridLayout()
+        settings.setContentsMargins(0, 2, 0, 2)
+        settings.setHorizontalSpacing(8)
+        settings.setVerticalSpacing(4)
         self.aes_mode = StyledComboBox()
         self.aes_mode.addItems(["CBC", "GCM", "CTR", "ECB"])
         self.aes_mode.setCurrentText("GCM")
@@ -2580,30 +2584,42 @@ class MainWindow(QMainWindow):
         self.aes_key_bits = StyledComboBox()
         self.aes_key_bits.addItems(["128", "192", "256"])
         self.aes_key_bits.setCurrentText("256")
+        self.aes_key_bits.setToolTip("Chỉ dùng khi bấm Tạo key. Key nhập tay được xác định kích thước từ số byte thực tế.")
         self.aes_key_format = StyledComboBox()
         self.aes_key_format.addItems(["UTF-8", "HEX", "BASE-64"])
         self.aes_key_format.setCurrentText("BASE-64")
-        self.aes_key_bits.setToolTip("Chỉ dùng khi bấm Tạo key. Key nhập tay được xác định kích thước từ số byte thực tế.")
         self.aes_key_format.setToolTip("UTF-8 được dùng trực tiếp làm byte của key, không phải mật khẩu qua KDF. Key sau khi giải mã định dạng phải dài 16, 24 hoặc 32 byte. Key sinh dạng UTF-8 dễ đọc có entropy thấp hơn HEX/Base-64; nên chọn HEX/Base-64 để có key ngẫu nhiên đủ entropy.")
         self.aes_iv_format = StyledComboBox()
         self.aes_iv_format.addItems(["UTF-8", "HEX", "BASE-64"])
         self.aes_iv_format.setCurrentText("BASE-64")
         self.aes_iv_format.setToolTip("IV/nonce UTF-8 được dùng trực tiếp làm byte. IV sinh dạng UTF-8 dễ đọc có entropy thấp hơn HEX/Base-64; nên chọn HEX/Base-64 để có IV ngẫu nhiên đủ entropy.")
-        for label, widget in (
-            ("Cipher mode", self.aes_mode), ("Padding", self.aes_padding),
-            ("Key size (tạo key)", self.aes_key_bits), ("Key format", self.aes_key_format),
-            ("IV format", self.aes_iv_format),
-        ):
-            settings.addWidget(QLabel(label))
-            settings.addWidget(widget)
+        for column, (label, widget) in enumerate((
+            ("Cipher mode", self.aes_mode),
+            ("Padding", self.aes_padding),
+            ("Key size", self.aes_key_bits),
+        )):
+            label_widget = QLabel(label)
+            label_widget.setObjectName("Muted")
+            settings.addWidget(label_widget, 0, column * 2, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            widget.setMinimumWidth(112)
+            settings.addWidget(widget, 0, column * 2 + 1)
+        settings.setColumnStretch(5, 1)
         layout.addLayout(settings)
 
+        # KEY và định dạng của nó luôn cùng một dòng để tránh chọn nhầm format.
         key_row = QHBoxLayout()
-        key_row.addWidget(QLabel("KEY"))
+        key_row.setSpacing(8)
+        key_label = QLabel("KEY")
+        key_label.setMinimumWidth(78)
+        key_row.addWidget(key_label)
         self.aes_key_input = QLineEdit()
+        self.aes_key_input.setMinimumWidth(0)
         self.aes_key_input.setEchoMode(QLineEdit.EchoMode.Password)
-        self.aes_key_input.setPlaceholderText("Key theo định dạng đã chọn…")
+        self.aes_key_input.setPlaceholderText("Nhập key theo định dạng bên cạnh…")
         key_row.addWidget(self.aes_key_input, 1)
+        self.aes_key_format.setMinimumWidth(118)
+        self.aes_key_format.setMaximumWidth(138)
+        key_row.addWidget(self.aes_key_format)
         self.aes_show_key = QCheckBox("Hiện")
         self.aes_show_key.toggled.connect(
             lambda visible: self.aes_key_input.setEchoMode(
@@ -2616,12 +2632,19 @@ class MainWindow(QMainWindow):
         key_row.addWidget(gen_key)
         layout.addLayout(key_row)
 
+        # IV/nonce và định dạng cũng nằm cùng dòng; control tự co khi cửa sổ hẹp.
         iv_row = QHBoxLayout()
+        iv_row.setSpacing(8)
         self.aes_iv_label = QLabel("IV / NONCE")
+        self.aes_iv_label.setMinimumWidth(78)
         iv_row.addWidget(self.aes_iv_label)
         self.aes_iv_input = QLineEdit()
+        self.aes_iv_input.setMinimumWidth(0)
         self.aes_iv_input.setPlaceholderText("Tự sinh khi Encode; lưu lại để Decode")
         iv_row.addWidget(self.aes_iv_input, 1)
+        self.aes_iv_format.setMinimumWidth(118)
+        self.aes_iv_format.setMaximumWidth(138)
+        iv_row.addWidget(self.aes_iv_format)
         self.aes_generate_iv_btn = QPushButton("Tạo IV")
         self.aes_generate_iv_btn.clicked.connect(self.generate_aes_iv_ui)
         iv_row.addWidget(self.aes_generate_iv_btn)
