@@ -10,6 +10,7 @@ from pathlib import Path
 from PySide6.QtCore import QSettings
 from PySide6.QtWidgets import (
     QCheckBox,
+    QComboBox,
     QDialog,
     QDialogButtonBox,
     QFileDialog,
@@ -21,6 +22,8 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+from fileforge.i18n import LANGUAGE_NAMES, SUPPORTED_LANGUAGES, translate_object_tree
 
 
 class PreferencesDialog(QDialog):
@@ -46,6 +49,26 @@ class PreferencesDialog(QDialog):
         intro.setWordWrap(True)
         intro.setObjectName("Muted")
         root.addWidget(intro)
+
+        language_row = QHBoxLayout()
+        language_label = QLabel("Ngôn ngữ")
+        language_label.setObjectName("Section")
+        language_row.addWidget(language_label)
+        self.language_combo = QComboBox()
+        for language_code in SUPPORTED_LANGUAGES:
+            self.language_combo.addItem(LANGUAGE_NAMES[language_code], language_code)
+        saved_language = str(settings.value("preferences/language", "vi") or "vi")
+        language_index = self.language_combo.findData(saved_language)
+        self.language_combo.setCurrentIndex(max(0, language_index))
+        language_row.addWidget(self.language_combo, 1)
+        root.addLayout(language_row)
+
+        language_hint = QLabel(
+            "Thay đổi ngôn ngữ có hiệu lực ngay lập tức và được lưu cho lần mở tiếp theo."
+        )
+        language_hint.setWordWrap(True)
+        language_hint.setObjectName("Muted")
+        root.addWidget(language_hint)
 
         self.restore_session = QCheckBox(
             "Khôi phục kích thước cửa sổ và công cụ đã mở lần trước"
@@ -127,6 +150,7 @@ class PreferencesDialog(QDialog):
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         root.addWidget(buttons)
+        translate_object_tree(self)
 
     def choose_output_directory(self):
         current = self.output_directory.text().strip()
@@ -173,6 +197,10 @@ class PreferencesDialog(QDialog):
         self.settings.setValue(
             "preferences/show_notifications",
             self.show_notifications.isChecked(),
+        )
+        self.settings.setValue(
+            "preferences/language",
+            str(self.language_combo.currentData() or "vi"),
         )
         self.settings.setValue(
             "paths/default_output_directory",
