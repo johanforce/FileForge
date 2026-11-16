@@ -25,6 +25,7 @@ class PreferencesDialogTests(unittest.TestCase):
             settings.setValue("preferences/remember_operation_options", False)
             settings.setValue("preferences/minimize_to_tray", True)
             settings.setValue("preferences/show_notifications", False)
+            settings.setValue("preferences/language", "en")
 
             output_dir = Path(temp_dir) / "output"
             output_dir.mkdir()
@@ -35,12 +36,14 @@ class PreferencesDialogTests(unittest.TestCase):
             self.assertFalse(dialog.remember_operation_options.isChecked())
             self.assertTrue(dialog.minimize_to_tray.isChecked())
             self.assertFalse(dialog.show_notifications.isChecked())
+            self.assertEqual(dialog.language_combo.currentData(), "en")
 
             dialog.restore_session.setChecked(True)
             dialog.remember_last_directory.setChecked(False)
             dialog.remember_operation_options.setChecked(True)
             dialog.minimize_to_tray.setChecked(False)
             dialog.show_notifications.setChecked(True)
+            dialog.language_combo.setCurrentIndex(dialog.language_combo.findData("vi"))
             dialog.output_directory.setText(str(output_dir))
             self.assertTrue(dialog.is_output_directory_valid())
             dialog.save_to_settings()
@@ -57,6 +60,7 @@ class PreferencesDialogTests(unittest.TestCase):
             )
             self.assertFalse(settings.value("preferences/minimize_to_tray", type=bool))
             self.assertTrue(settings.value("preferences/show_notifications", type=bool))
+            self.assertEqual(settings.value("preferences/language"), "vi")
             dialog.close()
 
     def test_tray_options_are_disabled_without_system_tray(self):
