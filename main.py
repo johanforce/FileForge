@@ -2007,7 +2007,7 @@ class MainWindow(QMainWindow):
         value = self.input_editor.toPlainText()
         if value:
             QApplication.clipboard().setText(value)
-            self.text_status.setText("Đã sao chép nội dung đầu vào")
+            self.text_status.setText(translate_text("Đã sao chép nội dung đầu vào"))
 
     def clear_text_all(self):
         if self.text_busy:
@@ -2024,11 +2024,11 @@ class MainWindow(QMainWindow):
         self._html_folded_blocks.clear()
         self.text_fold_btn.hide()
         self.text_unfold_btn.hide()
-        self.text_status.setText("Đã xóa nội dung")
+        self.text_status.setText(translate_text("Đã xóa nội dung"))
 
     def reset_text_splitter(self):
         self.text_splitter.setSizes([1, 1])
-        self.text_status.setText("Đã đưa hai khung về tỷ lệ 50/50")
+        self.text_status.setText(translate_text("Đã đưa hai khung về tỷ lệ 50/50"))
 
     def toggle_text_search(self, target="output"):
         visible = not self.text_search.isVisible() or self._text_search_target != target
@@ -2358,7 +2358,7 @@ class MainWindow(QMainWindow):
             self.curl_input.clear(),
             self.curl_body_input.clear(),
             self.curl_output.clear(),
-            self.curl_status.setText("Đã xóa"),
+            self.curl_status.setText(translate_text("Đã xóa")),
         ))
         actions.addWidget(clear)
         layout.addLayout(actions)
@@ -2470,7 +2470,7 @@ class MainWindow(QMainWindow):
             self.url_output.setPlainText(result)
             self.url_status.setText(translate_text("Đã decode URL"))
         except (ValueError, UnicodeError) as exc:
-            self.url_status.setText(f"Lỗi: {exc}")
+            self.url_status.setText(translate_text(f"Lỗi: {exc}"))
 
     def build_aes_panel(self):
         panel = QFrame()
@@ -3379,7 +3379,7 @@ class MainWindow(QMainWindow):
         if not self.busy or worker is None or not worker.isRunning():
             return
         self.cancel_task_btn.setEnabled(False)
-        self.progress_text.setText("Đang yêu cầu hủy an toàn…")
+        self.progress_text.setText(translate_text("Đang yêu cầu hủy an toàn…"))
         self.logger.info("User requested task cancellation")
         worker.request_cancel()
 
@@ -3388,13 +3388,13 @@ class MainWindow(QMainWindow):
         count = len(outputs)
         if count:
             self.progress_text.setText(
-                f"Đã hủy tác vụ · giữ lại {count} kết quả đã hoàn tất"
+                translate_text(f"Đã hủy tác vụ · giữ lại {count} kết quả đã hoàn tất")
             )
             summary = f"Đã hủy · giữ lại {count} kết quả đã hoàn tất"
             notification = f"Đã giữ lại {count} kết quả hoàn tất"
         else:
             self.progress_text.setText(
-                "Đã hủy tác vụ · phần kết quả đang xử lý đã được dọn"
+                translate_text("Đã hủy tác vụ · phần kết quả đang xử lý đã được dọn")
             )
             summary = "Đã hủy theo yêu cầu người dùng"
             notification = "FileForge đã dọn phần kết quả tạm"
@@ -3488,7 +3488,7 @@ class MainWindow(QMainWindow):
         self.set_busy(True)
         self.progress_area.show()
         self.progress.setValue(0)
-        self.progress_text.setText("Đang chuẩn bị…")
+        self.progress_text.setText(translate_text("Đang chuẩn bị…"))
 
         self.worker = TaskWorker(
             self.mode,
@@ -3538,7 +3538,7 @@ class MainWindow(QMainWindow):
 
         if mode == "zip":
             path = Path(result["path"])
-            self.progress_text.setText("Đã tạo tệp ZIP")
+            self.progress_text.setText(translate_text("Đã tạo tệp ZIP"))
             self._record_task_history(
                 "success",
                 outputs=[str(path)],
@@ -3566,11 +3566,11 @@ class MainWindow(QMainWindow):
         folder = context.get("output_folder", str(Path.home()))
 
         if mode == "extract":
-            self.progress_text.setText("Đã hoàn tất giải nén")
+            self.progress_text.setText(translate_text("Đã hoàn tất giải nén"))
             title = "Hoàn tất giải nén"
             message = f"Đã giải nén thành công {output_count} tệp ZIP."
         else:
-            self.progress_text.setText("Đã hoàn tất chuyển đổi")
+            self.progress_text.setText(translate_text("Đã hoàn tất chuyển đổi"))
             title = "Hoàn tất chuyển đổi"
             message = f"Đã chuyển đổi thành công {output_count} ảnh."
 
@@ -3614,7 +3614,7 @@ class MainWindow(QMainWindow):
         self.show_result(title, message, folder, details)
 
     def on_failure(self, message: str):
-        self.progress_text.setText("Tác vụ không thành công")
+        self.progress_text.setText(translate_text("Tác vụ không thành công"))
         self.logger.error("Task failed: %s", message)
         self._record_task_history(
             "failed",
