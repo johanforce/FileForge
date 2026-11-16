@@ -40,19 +40,29 @@ class TaskHistoryDialogTests(unittest.TestCase):
                 error_message="Không đọc được ảnh",
             )
 
+            store.record(
+                "Nén ZIP",
+                "cancelled",
+                inputs=[root / "archive-source.bin"],
+                output_folder=output,
+                summary="Đã hủy theo yêu cầu người dùng",
+            )
+
             dialog = TaskHistoryDialog(store)
-            self.assertEqual(dialog.table.rowCount(), 2)
+            self.assertEqual(dialog.table.rowCount(), 3)
+            self.assertEqual(dialog.table.item(0, 2).text(), "Đã hủy")
 
             dialog.search.setText("portrait")
             self.app.processEvents()
             self.assertFalse(dialog.table.isRowHidden(0))
             self.assertTrue(dialog.table.isRowHidden(1))
-            self.assertIn("1/2", dialog.count_label.text())
+            self.assertIn("1/3", dialog.count_label.text())
 
             dialog.search.clear()
             self.app.processEvents()
             self.assertFalse(dialog.table.isRowHidden(0))
             self.assertFalse(dialog.table.isRowHidden(1))
+            self.assertFalse(dialog.table.isRowHidden(2))
             dialog.close()
 
 
