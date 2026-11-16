@@ -34,8 +34,11 @@ class UISmokeTests(unittest.TestCase):
 
     def test_cancel_button_is_visible_only_while_file_task_is_busy(self):
         window = MainWindow()
+        window.show()
+        self.app.processEvents()
         self.assertTrue(window.cancel_task_btn.isHidden())
         window.set_busy(True)
+        self.app.processEvents()
         self.assertTrue(window.cancel_task_btn.isVisible())
         window.set_busy(False)
         self.assertTrue(window.cancel_task_btn.isHidden())
