@@ -4,10 +4,46 @@ import difflib
 import html
 import re
 import sys
+import traceback
 from pathlib import Path
 
-from PySide6.QtCore import QFileInfo, Qt, QThread, QUrl, Signal
-from PySide6.QtGui import QDesktopServices, QDragEnterEvent, QDropEvent, QFont, QColor, QPainter, QPen, QSyntaxHighlighter, QTextCharFormat, QKeySequence, QShortcut
+from PySide6.QtCore import (
+    QElapsedTimer,
+    QEasingCurve,
+    QEvent,
+    QObject,
+    QFileInfo,
+    QPoint,
+    QPointF,
+    QPropertyAnimation,
+    QRectF,
+    QSize,
+    Qt,
+    QThread,
+    QTimer,
+    QUrl,
+    QVariantAnimation,
+    Signal,
+)
+from PySide6.QtGui import (
+    QBrush,
+    QColor,
+    QDesktopServices,
+    QDragEnterEvent,
+    QDropEvent,
+    QFont,
+    QFontMetrics,
+    QGuiApplication,
+    QIcon,
+    QKeySequence,
+    QLinearGradient,
+    QPainter,
+    QPen,
+    QPixmap,
+    QShortcut,
+    QSyntaxHighlighter,
+    QTextCharFormat,
+)
 from PySide6.QtWidgets import (
     QApplication,
     QAbstractItemView,
@@ -35,6 +71,8 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QListView,
     QSplitter,
+    QStyle,
+    QStyledItemDelegate,
     QVBoxLayout,
     QWidget,
 )
@@ -47,8 +85,70 @@ from fileforge.compare import compare_text, compare_json, format_text_diff_repor
 from fileforge.curl_utils import parse_http_request
 
 
+# --------------------------------------------------------------------------
+# Tài nguyên (logo, icon). Thư mục `assets/` nằm cạnh main.py.
+# Khi đóng gói bằng PyInstaller: --add-data "assets;assets"
+# --------------------------------------------------------------------------
+APP_NAME = "FileForge"
+BRAND_DARK = "#334556"
+BRAND_BLUE = "#3C77F1"
+SPLASH_MIN_MS = 1900
+
+
+def resource_path(*parts: str) -> Path:
+    base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
+    return base.joinpath(*parts)
+
+
+def load_pixmap(name: str) -> QPixmap:
+    """Trả về ảnh trong thư mục assets/ (pixmap rỗng nếu thiếu file)."""
+    path = resource_path("assets", name)
+    return QPixmap(str(path)) if path.exists() else QPixmap()
+
+
+def load_app_icon() -> QIcon:
+    """Icon nhiều kích thước cho thanh tiêu đề, taskbar và Alt+Tab."""
+    pixmap = load_pixmap("logo.png")
+    icon = QIcon()
+    if pixmap.isNull():
+        return icon
+    for size in (16, 20, 24, 32, 40, 48, 64, 96, 128, 256):
+        icon.addPixmap(
+            pixmap.scaled(
+                size, size,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+        )
+    return icon
+
+
+def scaled_pixmap(pixmap: QPixmap, width: int, dpr: float = 1.0) -> QPixmap:
+    """Smoothly downscale to `width` logical px, sharp on HiDPI screens."""
+    if pixmap.isNull():
+        return pixmap
+    result = pixmap.scaledToWidth(
+        max(1, int(width * dpr)), Qt.TransformationMode.SmoothTransformation
+    )
+    result.setDevicePixelRatio(dpr)
+    return result
+
+
+def _set_windows_app_id():
+    """Let Windows show our icon in the taskbar instead of python.exe's."""
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("FileForge.App")
+    except Exception:
+        pass
+
+
 STYLE = """
 QMainWindow, QWidget { background: #f6f8fc; color: #202124; font-family: "Google Sans", "Segoe UI", sans-serif; font-size: 14px; }
+QLabel, QCheckBox { background: transparent; }
 QFrame#Panel { background: #ffffff; border: 1px solid #e3e7ef; border-radius: 16px; }
 QFrame#DropArea { background: #f8faff; border: 1px dashed #9aaecb; border-radius: 15px; }
 QFrame#DropArea[dragActive="true"] { background: #e8f0fe; border: 2px dashed #1a73e8; }
@@ -63,6 +163,7 @@ QPushButton#Primary:hover { background: #1765cc; }
 QPushButton:disabled { color: #9aa0a6; background: #f8f9fa; border-color: #e8eaed; }
 QLineEdit { background: #ffffff; border: 1px solid #dadce0; border-radius: 10px; padding: 9px 12px; min-width: 110px; color: #202124; selection-background-color: #d2e3fc; selection-color: #174ea6; }
 QComboBox {
+    combobox-popup: 0; /* dropdown mở ngay bên dưới ô chọn, không đè lên giá trị hiện tại */
     background: #ffffff;
     color: #202124;
     border: 1px solid #d7deea;
@@ -92,28 +193,19 @@ QComboBox::drop-down:hover { background: #f1f6ff; }
 QComboBox::down-arrow { image: none; width: 0px; height: 0px; }
 QFrame#ComboPopupContainer {
     background: #ffffff;
-    border: 1px solid #dce3ed;
+    border: 1px solid #d3dbe8;
     border-radius: 12px;
 }
-QListView#ComboPopupView {
+QListView#ComboPopupView, QListView#ComboPopupView QWidget {
     background: transparent;
-    color: #202124;
     border: none;
-    padding: 6px;
     outline: 0;
-    selection-background-color: #e8f0fe;
-    selection-color: #174ea6;
 }
-QListView#ComboPopupView::item {
-    min-height: 22px;
-    padding: 7px 12px;
-    margin: 2px;
-    border-radius: 7px;
-}
-QListView#ComboPopupView::item:hover { background: #f4f7fc; color: #174ea6; }
-QListView#ComboPopupView::item:selected { background: #e8f0fe; color: #174ea6; font-weight: 700; }
-QListView#ComboPopupView QScrollBar:vertical { width: 8px; background: transparent; margin: 4px 2px; }
-QListView#ComboPopupView QScrollBar::handle:vertical { background: #c7d2e2; border-radius: 4px; min-height: 24px; }
+QListView#ComboPopupView QScrollBar:vertical { width: 8px; background: transparent; margin: 2px 0px; border: none; }
+QListView#ComboPopupView QScrollBar::handle:vertical { background: #c7d2e2; border-radius: 4px; min-height: 28px; }
+QListView#ComboPopupView QScrollBar::handle:vertical:hover { background: #aab8cf; }
+QListView#ComboPopupView QScrollBar::add-line:vertical, QListView#ComboPopupView QScrollBar::sub-line:vertical { height: 0px; }
+QListView#ComboPopupView QScrollBar::add-page:vertical, QListView#ComboPopupView QScrollBar::sub-page:vertical { background: transparent; }
 QLineEdit:hover { border-color: #8ab4f8; }
 QLineEdit:focus, QPlainTextEdit:focus { border: 1px solid #1a73e8; }
 QTabWidget::pane { border: 0; border-bottom: 1px solid #e8eaed; }
@@ -139,8 +231,113 @@ QSlider::handle:horizontal { background: #1a73e8; width: 14px; margin: -5px 0; b
 """
 
 
+class ComboItemDelegate(QStyledItemDelegate):
+    """Paints dropdown rows ourselves so spacing is identical at any window size."""
+
+    ROW_HEIGHT = 36
+    INSET_X = 2
+    INSET_Y = 1
+    TEXT_PAD = 12
+    CHECK_SPACE = 24
+
+    def __init__(self, combo: QComboBox):
+        super().__init__(combo)
+        self._combo = combo
+
+    def row_width(self, text: str, font: QFont) -> int:
+        bold = QFont(font)
+        bold.setWeight(QFont.Weight.DemiBold)
+        text_width = QFontMetrics(bold).horizontalAdvance(text)
+        return text_width + self.TEXT_PAD * 2 + self.CHECK_SPACE + self.INSET_X * 2
+
+    def sizeHint(self, option, index):
+        text = str(index.data(Qt.ItemDataRole.DisplayRole) or "")
+        return QSize(self.row_width(text, option.font), self.ROW_HEIGHT)
+
+    def paint(self, painter, option, index):
+        text = str(index.data(Qt.ItemDataRole.DisplayRole) or "")
+        enabled = bool(index.flags() & Qt.ItemFlag.ItemIsEnabled)
+        hovered = bool(option.state & QStyle.StateFlag.State_MouseOver)
+        keyboard = bool(option.state & QStyle.StateFlag.State_Selected)
+        current = index.row() == self._combo.currentIndex()
+
+        background = None
+        foreground = QColor("#202124")
+        if not enabled:
+            foreground = QColor("#9aa0a6")
+        elif current:
+            background = QColor("#dfeafd") if hovered else QColor("#e8f0fe")
+            foreground = QColor("#174ea6")
+        elif hovered or keyboard:
+            background = QColor("#f1f5fb")
+            foreground = QColor("#174ea6")
+
+        painter.save()
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        row = QRectF(option.rect).adjusted(
+            self.INSET_X, self.INSET_Y, -self.INSET_X, -self.INSET_Y
+        )
+        if background is not None:
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(background)
+            painter.drawRoundedRect(row, 8, 8)
+
+        font = QFont(option.font)
+        font.setWeight(QFont.Weight.DemiBold if current else QFont.Weight.Normal)
+        painter.setFont(font)
+        painter.setPen(foreground)
+
+        metrics = QFontMetrics(font)
+        text_width = max(0, int(row.width() - self.TEXT_PAD - self.CHECK_SPACE))
+        elided = metrics.elidedText(text, Qt.TextElideMode.ElideRight, text_width)
+        baseline = row.center().y() + (metrics.ascent() - metrics.descent()) / 2.0
+        painter.drawText(QPointF(row.left() + self.TEXT_PAD, baseline), elided)
+
+        if current:
+            pen = QPen(
+                QColor("#1a73e8"),
+                1.8,
+                Qt.PenStyle.SolidLine,
+                Qt.PenCapStyle.RoundCap,
+                Qt.PenJoinStyle.RoundJoin,
+            )
+            painter.setPen(pen)
+            cx, cy = row.right() - 16, row.center().y()
+            painter.drawLine(QPointF(cx - 4.5, cy), QPointF(cx - 1.5, cy + 3.5))
+            painter.drawLine(QPointF(cx - 1.5, cy + 3.5), QPointF(cx + 4.5, cy - 3.5))
+
+        painter.restore()
+
+
+class PopupCardPainter(QObject):
+    """Tự vẽ nền trắng + viền bo tròn cho popup, không phụ thuộc stylesheet."""
+
+    def __init__(self, container: QWidget):
+        super().__init__(container)
+        self._container = container
+        container.installEventFilter(self)
+
+    def eventFilter(self, obj, event):
+        if obj is self._container and event.type() == QEvent.Type.Paint:
+            painter = QPainter(obj)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            painter.setPen(QPen(QColor("#d3dbe8"), 1))
+            painter.setBrush(QColor("#ffffff"))
+            painter.drawRoundedRect(
+                QRectF(obj.rect()).adjusted(0.5, 0.5, -0.5, -0.5), 12, 12
+            )
+            painter.end()
+        return False
+
+
 class StyledComboBox(QComboBox):
-    """Combo box with a deterministic chevron and a rounded popup frame."""
+    """Combo box with a deterministic chevron and a rounded, self-sizing popup."""
+
+    POPUP_PADDING = 6
+    POPUP_GAP = 4
+    SCREEN_MARGIN = 8
+    MIN_COMBO_WIDTH = 112
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -150,27 +347,52 @@ class StyledComboBox(QComboBox):
         popup.setLineWidth(0)
         popup.setUniformItemSizes(True)
         popup.setMouseTracking(True)
-        popup.setSpacing(1)
+        popup.setSpacing(0)
+        popup.setTextElideMode(Qt.TextElideMode.ElideRight)
+        popup.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         popup.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         popup.setAutoFillBackground(False)
         popup.viewport().setAutoFillBackground(False)
         self.setView(popup)
-        self.setMaxVisibleItems(10)
+        self.setItemDelegate(ComboItemDelegate(self))
+        self.setMaxVisibleItems(14)
         self.setSizeAdjustPolicy(
             QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
         )
         self.setMinimumContentsLength(10)
 
-        # QComboBox owns a separate QFrame for its popup. Style that frame,
-        # rather than trying to round the scroll area's viewport itself.
+        # QComboBox owns a separate top-level frame for its popup. Make that
+        # frame translucent so the rounded corners are real (no square
+        # background peeking out), and let the frame draw card + border.
         self._popup_container = popup.parentWidget()
-        if self._popup_container is not None:
-            self._popup_container.setObjectName("ComboPopupContainer")
-            self._popup_container.setAttribute(
-                Qt.WidgetAttribute.WA_StyledBackground, True
+        container = self._popup_container
+        if container is not None:
+            container.setObjectName("ComboPopupContainer")
+            container.setWindowFlags(
+                Qt.WindowType.Popup
+                | Qt.WindowType.FramelessWindowHint
+                | Qt.WindowType.NoDropShadowWindowHint
             )
-            if isinstance(self._popup_container, QFrame):
-                self._popup_container.setFrameShape(QFrame.Shape.NoFrame)
+            container.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+            container.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+            if isinstance(container, QFrame):
+                container.setFrameShape(QFrame.Shape.NoFrame)
+            self._popup_card = PopupCardPainter(container)
+            self._apply_container_margins()
+
+    def _apply_container_margins(self):
+        container = self._popup_container
+        layout = container.layout() if container is not None else None
+        if layout is not None:
+            pad = self.POPUP_PADDING
+            layout.setContentsMargins(pad, pad, pad, pad)
+            layout.setSpacing(0)
+
+    def minimumSizeHint(self):
+        # Let the box shrink with the window (text elides) instead of forcing
+        # the whole layout wider than the window.
+        hint = super().minimumSizeHint()
+        return QSize(min(hint.width(), self.MIN_COMBO_WIDTH), hint.height())
 
     def paintEvent(self, event):
         super().paintEvent(event)
@@ -202,12 +424,66 @@ class StyledComboBox(QComboBox):
         painter.end()
 
     def showPopup(self):
+        self._apply_container_margins()
         super().showPopup()
+        self._place_popup()
         self.update()
 
     def hidePopup(self):
         super().hidePopup()
         self.update()
+
+    def _place_popup(self):
+        """Size the popup to its content and keep it fully on screen."""
+        container = self._popup_container
+        view = self.view()
+        count = self.count()
+        if container is None or count == 0:
+            return
+
+        layout = container.layout()
+        if layout is not None:
+            layout.activate()
+
+        delegate = self.itemDelegate()
+        row_h = ComboItemDelegate.ROW_HEIGHT
+        if isinstance(delegate, ComboItemDelegate):
+            content_w = max(
+                delegate.row_width(self.itemText(i), self.font()) for i in range(count)
+            )
+        else:
+            content_w = self.width()
+
+        # Chrome = everything around the list (border + padding).
+        chrome_w = container.width() - view.width()
+        chrome_h = container.height() - view.height()
+
+        screen = self.screen().availableGeometry()
+        margin = self.SCREEN_MARGIN
+        origin = self.mapToGlobal(QPoint(0, 0))
+        below_y = origin.y() + self.height() + self.POPUP_GAP
+        space_below = screen.bottom() - margin - below_y
+        space_above = origin.y() - self.POPUP_GAP - (screen.top() + margin)
+
+        rows = min(count, self.maxVisibleItems())
+        height = rows * row_h + chrome_h
+        place_below = space_below >= height or space_below >= space_above
+        available = space_below if place_below else space_above
+        if height > available:
+            rows = max(1, int((available - chrome_h) // row_h))
+            height = rows * row_h + chrome_h
+
+        scroll_w = 12 if rows < count else 0
+        width = max(self.width(), content_w + chrome_w + scroll_w)
+        width = min(width, screen.width() - margin * 2)
+
+        x = origin.x()
+        if x + width > screen.right() - margin:
+            x = origin.x() + self.width() - width  # right-align with the combo
+        x = max(screen.left() + margin, x)
+        y = below_y if place_below else origin.y() - self.POPUP_GAP - height
+
+        container.setGeometry(x, y, width, height)
 
 
 COMPRESSION_OPTIONS = {
@@ -584,6 +860,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("FileForge")
+        self.setWindowIcon(load_app_icon())
         self.resize(1040, 740)
         self.setMinimumSize(860, 620)
 
@@ -609,8 +886,21 @@ class MainWindow(QMainWindow):
         outer.setSpacing(14)
 
         header = QHBoxLayout()
-        brand = QLabel("✦  FileForge")
+        header.setSpacing(10)
+        logo_pixmap = load_pixmap("logo.png")
+        if not logo_pixmap.isNull():
+            self.brand_logo = QLabel()
+            self.brand_logo.setFixedSize(38, 38)
+            self.brand_logo.setPixmap(
+                scaled_pixmap(logo_pixmap, 38, self.devicePixelRatioF())
+            )
+            header.addWidget(self.brand_logo)
+        brand = QLabel(
+            f'<span style="color:{BRAND_DARK};">File</span>'
+            f'<span style="color:{BRAND_BLUE};">Forge</span>'
+        )
         brand.setObjectName("Brand")
+        brand.setTextFormat(Qt.TextFormat.RichText)
         header.addWidget(brand)
         header.addStretch()
 
@@ -719,7 +1009,7 @@ class MainWindow(QMainWindow):
         self.format_label.setObjectName("Muted")
         controls.addWidget(self.format_label)
 
-        self.format_combo = QComboBox()
+        self.format_combo = StyledComboBox()
         self.format_combo.addItems(["JPG", "PNG", "WEBP"])
         self.format_combo.setCurrentText("JPG")
         self.format_combo.currentTextChanged.connect(self.update_quality_state)
@@ -841,12 +1131,16 @@ class MainWindow(QMainWindow):
 
         toolbar = QHBoxLayout()
         toolbar.setSpacing(8)
+        # Hàng 2: tuỳ chọn hiển thị. Tách riêng để thanh công cụ không bị tràn
+        # khi thu nhỏ cửa sổ.
+        options = QHBoxLayout()
+        options.setSpacing(8)
 
         operation_label = QLabel("Chức năng")
         operation_label.setObjectName("Muted")
         toolbar.addWidget(operation_label)
 
-        self.text_operation = QComboBox()
+        self.text_operation = StyledComboBox()
         operations = [
             ("JSON Format", "format_json"),
             ("JSON Minify", "minify_json"),
@@ -865,12 +1159,13 @@ class MainWindow(QMainWindow):
         for label, operation in operations:
             self.text_operation.addItem(label, operation)
         self.text_operation.setObjectName("OperationCombo")
-        self.text_operation.setMinimumWidth(210)
+        self.text_operation.setMinimumWidth(190)
+        self.text_operation.setMaximumWidth(340)
         self.text_operation.setMaxVisibleItems(14)
         self.text_operation.currentIndexChanged.connect(
             self.on_text_operation_changed
         )
-        toolbar.addWidget(self.text_operation, 2)
+        toolbar.addWidget(self.text_operation, 1)
 
         self.text_pair_tabs = QTabWidget()
         self.text_pair_definitions = [
@@ -891,30 +1186,31 @@ class MainWindow(QMainWindow):
         self.text_swap_btn.setToolTip("Đảo chiều chuyển đổi và đưa kết quả hiện tại về ô đầu vào")
         self.text_swap_btn.clicked.connect(self.swap_text_direction)
         toolbar.addWidget(self.text_swap_btn)
+        toolbar.addStretch(1)
 
         self.text_indent_label = QLabel("Indent")
         self.text_indent_label.setObjectName("Muted")
-        toolbar.addWidget(self.text_indent_label)
-        self.text_indent = QComboBox()
+        options.addWidget(self.text_indent_label)
+        self.text_indent = StyledComboBox()
         self.text_indent.addItem("2 spaces", 2)
         self.text_indent.addItem("4 spaces", 4)
         self.text_indent.setCurrentIndex(0)
         self.text_indent.setMinimumWidth(104)
         self.text_indent.setMaximumWidth(116)
-        toolbar.addWidget(self.text_indent)
+        options.addWidget(self.text_indent)
 
         self.text_wrap_btn = QPushButton("Wrap: Tắt")
         self.text_wrap_btn.clicked.connect(self.toggle_text_wrap)
-        toolbar.addWidget(self.text_wrap_btn)
+        options.addWidget(self.text_wrap_btn)
         self.text_layout_btn = QPushButton("Xếp dọc")
         self.text_layout_btn.clicked.connect(self.toggle_text_layout)
-        toolbar.addWidget(self.text_layout_btn)
+        options.addWidget(self.text_layout_btn)
 
         self.text_model_label = QLabel("Model")
         self.text_model_label.setObjectName("Muted")
-        toolbar.addWidget(self.text_model_label)
+        options.addWidget(self.text_model_label)
 
-        self.text_model_target = QComboBox()
+        self.text_model_target = StyledComboBox()
         self.text_model_target.addItem("Python dataclass", "dataclass")
         self.text_model_target.addItem("Pydantic v2", "pydantic")
         self.text_model_target.addItem("TypeScript", "typescript")
@@ -922,18 +1218,18 @@ class MainWindow(QMainWindow):
         self.text_model_target.addItem("Kotlin", "kotlin")
         self.text_model_target.addItem("C", "c")
         self.text_model_target.setObjectName("ModelCombo")
-        self.text_model_target.setMinimumWidth(158)
+        self.text_model_target.setMinimumWidth(140)
         self.text_model_target.setMaxVisibleItems(8)
-        toolbar.addWidget(self.text_model_target, 1)
+        options.addWidget(self.text_model_target)
 
         self.text_class_label = QLabel("Tên lớp")
         self.text_class_label.setObjectName("Muted")
-        toolbar.addWidget(self.text_class_label)
+        options.addWidget(self.text_class_label)
 
         self.text_class_name = QLineEdit("RootModel")
         self.text_class_name.setPlaceholderText("RootModel")
-        self.text_class_name.setMaximumWidth(145)
-        toolbar.addWidget(self.text_class_name)
+        self.text_class_name.setMaximumWidth(130)
+        options.addWidget(self.text_class_name)
 
         self.text_execute_btn = QPushButton("Thực hiện  →")
         self.text_execute_btn.setObjectName("Primary")
@@ -945,6 +1241,8 @@ class MainWindow(QMainWindow):
         toolbar.addWidget(self.text_clear_btn)
 
         layout.addLayout(toolbar)
+        options.addStretch(1)
+        layout.addLayout(options)
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
         splitter.setChildrenCollapsible(False)
@@ -1488,7 +1786,7 @@ class MainWindow(QMainWindow):
         label.setObjectName("Section")
         header.addWidget(label)
         header.addStretch()
-        source = QComboBox()
+        source = StyledComboBox()
         source.addItem("Dán JSON", "paste")
         source.addItem("Mở tệp .json…", "file")
         source.setToolTip("Chọn dán JSON hoặc nạp nội dung từ tệp JSON trên máy")
@@ -1644,7 +1942,7 @@ class MainWindow(QMainWindow):
         mode_label = QLabel("Độ chi tiết")
         mode_label.setObjectName("Muted")
         options.addWidget(mode_label)
-        self.string_diff_mode = QComboBox()
+        self.string_diff_mode = StyledComboBox()
         self.string_diff_mode.addItem("Theo dòng", "line")
         self.string_diff_mode.addItem("Theo từ", "word")
         self.string_diff_mode.addItem("Theo ký tự", "character")
@@ -1653,9 +1951,6 @@ class MainWindow(QMainWindow):
         self.string_ignore_case = QCheckBox("Bỏ qua hoa/thường")
         self.string_ignore_whitespace = QCheckBox("Bỏ qua khoảng trắng")
         self.string_ignore_blank = QCheckBox("Bỏ qua dòng trống")
-        options.addWidget(self.string_ignore_case)
-        options.addWidget(self.string_ignore_whitespace)
-        options.addWidget(self.string_ignore_blank)
         options.addStretch()
         self.string_compare_btn = QPushButton("So sánh")
         self.string_compare_btn.setObjectName("Primary")
@@ -1668,6 +1963,14 @@ class MainWindow(QMainWindow):
         self.string_clear_btn.clicked.connect(self.clear_string_compare)
         options.addWidget(self.string_clear_btn)
         layout.addLayout(options)
+
+        filters = QHBoxLayout()
+        filters.setSpacing(18)
+        filters.addWidget(self.string_ignore_case)
+        filters.addWidget(self.string_ignore_whitespace)
+        filters.addWidget(self.string_ignore_blank)
+        filters.addStretch()
+        layout.addLayout(filters)
 
         inputs = QSplitter(Qt.Orientation.Horizontal)
         self.string_before = self._build_compare_text_pane(
@@ -1720,7 +2023,7 @@ class MainWindow(QMainWindow):
         array_label = QLabel("So sánh mảng")
         array_label.setObjectName("Muted")
         controls.addWidget(array_label)
-        self.json_array_mode = QComboBox()
+        self.json_array_mode = StyledComboBox()
         self.json_array_mode.addItem("Theo vị trí", False)
         self.json_array_mode.addItem("Bỏ qua thứ tự", True)
         self.json_array_mode.setToolTip(
@@ -1766,7 +2069,7 @@ class MainWindow(QMainWindow):
         self.json_diff_summary = QLabel("Object key được so sánh không phụ thuộc thứ tự")
         self.json_diff_summary.setObjectName("Muted")
         result_header.addWidget(self.json_diff_summary)
-        self.json_diff_filter = QComboBox()
+        self.json_diff_filter = StyledComboBox()
         self.json_diff_filter.addItem("Tất cả", "all")
         self.json_diff_filter.addItem("Được thêm", "added")
         self.json_diff_filter.addItem("Đã xóa", "removed")
@@ -2353,14 +2656,265 @@ class MainWindow(QMainWindow):
         )
 
 
+class SplashScreen(QWidget):
+    """Màn hình chờ: logo, tên app và thanh tiến trình, vẽ hoàn toàn bằng QPainter."""
+
+    WIDTH = 560
+    HEIGHT = 440
+    MARGIN = 28  # chỗ cho bóng đổ quanh thẻ
+
+    def __init__(self):
+        super().__init__(None)
+        self.setObjectName("Splash")
+        self.setWindowIcon(load_app_icon())
+        self.setWindowFlags(
+            Qt.WindowType.SplashScreen
+            | Qt.WindowType.FramelessWindowHint
+            | Qt.WindowType.WindowStaysOnTopHint
+        )
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        # Stylesheet toàn app đặt nền cho mọi QWidget -> ghi đè riêng cho splash.
+        self.setStyleSheet("#Splash { background: transparent; }")
+        self.setFixedSize(self.WIDTH, self.HEIGHT)
+
+        screen = QGuiApplication.primaryScreen()
+        dpr = screen.devicePixelRatio() if screen is not None else 1.0
+        self._logo = scaled_pixmap(load_pixmap("logo.png"), 124, dpr)
+        self._wordmark = scaled_pixmap(load_pixmap("wordmark.png"), 196, dpr)
+
+        self._status = ""
+        self._target = 0.0
+        self._shown = 0.0
+        self._intro = 0.0
+        self._clock = QElapsedTimer()
+
+        self._intro_anim = QVariantAnimation(self)
+        self._intro_anim.setStartValue(0.0)
+        self._intro_anim.setEndValue(1.0)
+        self._intro_anim.setDuration(900)
+        self._intro_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self._intro_anim.valueChanged.connect(self._on_intro)
+
+        self._ticker = QTimer(self)
+        self._ticker.setInterval(16)
+        self._ticker.timeout.connect(self._tick)
+
+        self._fade_anim = None
+
+    # ------------------------------------------------------------ control
+    def show_animated(self):
+        self.setWindowOpacity(0.0)
+        if screen := QGuiApplication.primaryScreen():
+            area = screen.availableGeometry()
+            self.move(area.center() - QPoint(self.width() // 2, self.height() // 2))
+        self.show()
+        self._clock.start()
+
+        self._fade_anim = QPropertyAnimation(self, b"windowOpacity", self)
+        self._fade_anim.setDuration(240)
+        self._fade_anim.setStartValue(0.0)
+        self._fade_anim.setEndValue(1.0)
+        self._fade_anim.start()
+        self._intro_anim.start()
+        self._ticker.start()
+
+    def elapsed_ms(self) -> int:
+        return int(self._clock.elapsed()) if self._clock.isValid() else 0
+
+    def set_progress(self, value: float, status: str | None = None):
+        self._target = max(self._target, min(100.0, float(value)))
+        if status is not None:
+            self._status = status
+        self.update()
+
+    def fade_out(self, duration: int = 320):
+        self._fade_anim = QPropertyAnimation(self, b"windowOpacity", self)
+        self._fade_anim.setDuration(duration)
+        self._fade_anim.setStartValue(self.windowOpacity())
+        self._fade_anim.setEndValue(0.0)
+        self._fade_anim.setEasingCurve(QEasingCurve.Type.InOutQuad)
+        self._fade_anim.finished.connect(self._finish_close)
+        self._fade_anim.start()
+
+    def _finish_close(self):
+        self._ticker.stop()
+        self.close()
+
+    def _on_intro(self, value):
+        self._intro = float(value)
+        self.update()
+
+    def _tick(self):
+        gap = self._target - self._shown
+        if abs(gap) < 0.05:
+            self._shown = self._target
+        else:
+            self._shown += gap * 0.14
+        # trôi nhẹ để thanh tiến trình không bao giờ trông như bị đứng
+        if gap < 0.6 and self._target < 96.0:
+            self._target = min(96.0, self._target + 0.07)
+        self.update()
+
+    # ------------------------------------------------------------ painting
+    @staticmethod
+    def _soft_shadow(painter, rect, radius, layers, spread, alpha, dy, color):
+        painter.setPen(Qt.PenStyle.NoPen)
+        for i in range(layers, 0, -1):
+            tint = QColor(color)
+            tint.setAlpha(alpha)
+            painter.setBrush(tint)
+            grow = i * spread
+            painter.drawRoundedRect(
+                rect.adjusted(-grow, -grow + dy, grow, grow + dy),
+                radius + grow,
+                radius + grow,
+            )
+
+    @staticmethod
+    def _draw_centered(painter, text, center_x, baseline):
+        width = QFontMetrics(painter.font()).horizontalAdvance(text)
+        painter.drawText(QPointF(center_x - width / 2.0, baseline), text)
+
+    def paintEvent(self, _event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+
+        m = self.MARGIN
+        card = QRectF(m, m, self.width() - 2 * m, self.height() - 2 * m)
+        cx = card.center().x()
+
+        # thẻ + bóng
+        self._soft_shadow(painter, card, 26, 14, 1.4, 5, 7, QColor(24, 48, 104))
+        gradient = QLinearGradient(card.topLeft(), card.bottomLeft())
+        gradient.setColorAt(0.0, QColor("#ffffff"))
+        gradient.setColorAt(1.0, QColor("#f2f6fd"))
+        painter.setPen(QPen(QColor("#e3e9f4"), 1))
+        painter.setBrush(QBrush(gradient))
+        painter.drawRoundedRect(card, 26, 26)
+
+        families = ["Google Sans", "Segoe UI", "Helvetica Neue", "Arial"]
+
+        # logo (hiện dần + phóng nhẹ)
+        logo_top = card.top() + 44
+        logo_size = 124.0
+        logo_alpha = min(1.0, self._intro * 1.7)
+        scale = 0.86 + 0.14 * self._intro
+        logo_rect = QRectF(cx - logo_size / 2, logo_top, logo_size, logo_size)
+        if not self._logo.isNull():
+            painter.save()
+            painter.setOpacity(logo_alpha)
+            painter.translate(logo_rect.center())
+            painter.scale(scale, scale)
+            painter.translate(-logo_rect.center())
+            self._soft_shadow(
+                painter, logo_rect.adjusted(6, 6, -6, -6), 24, 9, 1.6, 6, 9,
+                QColor(40, 90, 200),
+            )
+            painter.drawPixmap(logo_rect.topLeft(), self._logo)
+            painter.restore()
+        else:
+            painter.save()
+            painter.setOpacity(logo_alpha)
+            title_font = QFont()
+            title_font.setFamilies(families)
+            title_font.setPixelSize(40)
+            title_font.setWeight(QFont.Weight.Bold)
+            painter.setFont(title_font)
+            painter.setPen(QColor(BRAND_DARK))
+            self._draw_centered(painter, APP_NAME, cx, logo_rect.center().y() + 14)
+            painter.restore()
+
+        # wordmark
+        word_alpha = max(0.0, min(1.0, (self._intro - 0.25) / 0.75))
+        word_top = logo_rect.bottom() + 26
+        if not self._wordmark.isNull():
+            word_w = self._wordmark.width() / self._wordmark.devicePixelRatio()
+            painter.save()
+            painter.setOpacity(word_alpha)
+            painter.drawPixmap(
+                QPointF(cx - word_w / 2, word_top + (1.0 - word_alpha) * 8), self._wordmark
+            )
+            painter.restore()
+
+        # thanh tiến trình
+        bar_w, bar_h = 260.0, 5.0
+        bar_x = cx - bar_w / 2
+        bar_y = card.bottom() - 74
+        track = QRectF(bar_x, bar_y, bar_w, bar_h)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor("#e3e9f4"))
+        painter.drawRoundedRect(track, bar_h / 2, bar_h / 2)
+        fill_w = bar_w * max(0.0, min(100.0, self._shown)) / 100.0
+        if fill_w > 0.5:
+            fill = QRectF(bar_x, bar_y, max(bar_h, fill_w), bar_h)
+            bar_gradient = QLinearGradient(fill.topLeft(), fill.topRight())
+            bar_gradient.setColorAt(0.0, QColor("#1a73e8"))
+            bar_gradient.setColorAt(1.0, QColor("#5b9bff"))
+            painter.setBrush(QBrush(bar_gradient))
+            painter.drawRoundedRect(fill, bar_h / 2, bar_h / 2)
+
+        # trạng thái
+        status_font = QFont()
+        status_font.setFamilies(families)
+        status_font.setPixelSize(12)
+        painter.setFont(status_font)
+        painter.setPen(QColor("#80868b"))
+        self._draw_centered(painter, self._status, cx, bar_y + 28)
+        painter.end()
+
+
 def main():
+    _set_windows_app_id()
     app = QApplication(sys.argv)
+    app.setApplicationName(APP_NAME)
+    app.setApplicationDisplayName(APP_NAME)
     app.setStyle("Fusion")
     app.setStyleSheet(STYLE)
     app.setFont(QFont("SF Pro Display", 10))
+    app.setWindowIcon(load_app_icon())
 
-    window = MainWindow()
-    window.show()
+    splash = SplashScreen()
+    splash.show_animated()
+    splash.set_progress(14, "Đang khởi động…")
+    launch: dict = {}
+
+    def build_window():
+        splash.set_progress(46, "Đang dựng giao diện…")
+        app.processEvents()
+        try:
+            launch["window"] = MainWindow()
+        except Exception:
+            splash.close()
+            QMessageBox.critical(
+                None, "Không thể khởi động FileForge", traceback.format_exc()
+            )
+            app.quit()
+            return
+        splash.set_progress(88, "Gần xong…")
+        QTimer.singleShot(max(0, SPLASH_MIN_MS - splash.elapsed_ms()), finish_splash)
+
+    def finish_splash():
+        splash.set_progress(100, "Sẵn sàng")
+        QTimer.singleShot(420, reveal_window)
+
+    def reveal_window():
+        window = launch["window"]
+        if screen := QGuiApplication.primaryScreen():
+            frame = window.frameGeometry()
+            frame.moveCenter(screen.availableGeometry().center())
+            window.move(frame.topLeft())
+        window.setWindowOpacity(0.0)
+        window.show()
+        fade = QPropertyAnimation(window, b"windowOpacity", window)
+        fade.setDuration(260)
+        fade.setStartValue(0.0)
+        fade.setEndValue(1.0)
+        fade.start()
+        launch["fade"] = fade  # giữ tham chiếu để animation không bị thu hồi
+        splash.fade_out()
+
+    QTimer.singleShot(260, build_window)
     sys.exit(app.exec())
 
 

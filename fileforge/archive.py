@@ -13,37 +13,90 @@ import zipfile
 class ArchiveItem:
     path: Path
     archive_name: str
+    size: int = 0
+    is_dir: bool = False
 
 
-COMPRESSION = {
-    "Fast": zipfile.ZIP_STORED,
-    "Balanced": zipfile.ZIP_DEFLATED,
-    "Best": zipfile.ZIP_LZMA,
+# Every preset uses DEFLATE so the archive opens in Windows Explorer, macOS
+# Archive Utility and every other tool (LZMA/BZIP2 ZIPs often do not).
+# "Fast" still compresses (level 1) instead of just storing the files.
+PRESETS: dict[str, tuple[int, int]] = {
+    "Fast": (zipfile.ZIP_DEFLATED, 1),
+    "Balanced": (zipfile.ZIP_DEFLATED, 6),
+    "Best": (zipfile.ZIP_DEFLATED, 9),
+}
+# Kept for backwards compatibility with code importing COMPRESSION.
+COMPRESSION = {name: method for name, (method, _level) in PRESETS.items()}
+
+# Already-compressed formats: recompressing wastes CPU for ~0% gain.
+STORE_ONLY_EXTENSIONS = {
+    ".zip", ".7z", ".rar", ".gz", ".bz2", ".xz", ".zst", ".tgz",
+    ".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic", ".avif",
+    ".mp3", ".aac", ".m4a", ".ogg", ".flac",
+    ".mp4", ".mkv", ".mov", ".avi", ".webm",
+    ".docx", ".xlsx", ".pptx", ".odt", ".ods", ".odp", ".epub", ".jar", ".apk",
 }
 
 
+def _unique_name(name: str, used: set[str]) -> str:
+    """Return a name not yet used in the archive (report.txt -> report_2.txt).
+
+    Comparison is case-insensitive because Windows/macOS extract
+    case-insensitively and would otherwise overwrite one file with the other.
+    """
+    def key(value: str) -> str:
+        return value.replace("\\", "/").lower()
+
+    candidate = name
+    if key(candidate) in used:
+        base = Path(name)
+        counter = 2
+        while True:
+            candidate = str(base.with_name(f"{base.stem}_{counter}{base.suffix}"))
+            if key(candidate) not in used:
+                break
+            counter += 1
+    used.add(key(candidate))
+    return candidate
+
+
 def collect_items(paths: Iterable[str | Path]) -> list[ArchiveItem]:
-    """Expand folders recursively while keeping folder-relative paths."""
+    """Expand folders recursively, keep folder-relative paths and empty folders."""
     items: list[ArchiveItem] = []
     seen: set[tuple[str, str]] = set()
+    used_names: set[str] = set()
+
+    def add_file(path: Path, name: str):
+        if (str(path), name) in seen:
+            return
+        seen.add((str(path), name))
+        items.append(
+            ArchiveItem(path, _unique_name(name, used_names), path.stat().st_size)
+        )
+
+    def add_dir(path: Path, name: str):
+        key = name.replace("\\", "/").lower().rstrip("/") + "/"
+        if key in used_names:
+            return
+        used_names.add(key)
+        items.append(ArchiveItem(path, name, 0, True))
+
     for raw in paths:
         source = Path(raw).expanduser().resolve()
         if not source.exists():
             raise FileNotFoundError(source)
         if source.is_file():
-            candidates = [(source, source.name)]
+            add_file(source, source.name)
         elif source.is_dir():
-            candidates = [
-                (p, str(Path(source.name) / p.relative_to(source)))
-                for p in sorted(source.rglob("*")) if p.is_file()
-            ]
-        else:
-            continue
-        for path, name in candidates:
-            key = (str(path), name)
-            if key not in seen:
-                seen.add(key)
-                items.append(ArchiveItem(path, name))
+            root = Path(source.name)
+            if not any(source.iterdir()):
+                add_dir(source, str(root))
+            for path in sorted(source.rglob("*")):
+                name = str(root / path.relative_to(source))
+                if path.is_file():
+                    add_file(path, name)
+                elif path.is_dir() and not any(path.iterdir()):
+                    add_dir(path, name)
     return items
 
 
@@ -54,8 +107,9 @@ def create_zip(
     progress: Callable[[int, int, str], None] | None = None,
 ) -> Path:
     """Create an archive atomically; an existing destination survives failures."""
-    if compression not in COMPRESSION:
+    if compression not in PRESETS:
         raise ValueError(f"Unknown compression preset: {compression}")
+    method, level = PRESETS[compression]
     items = collect_items(paths)
     if not items:
         raise ValueError("There are no files to archive.")
@@ -66,7 +120,7 @@ def create_zip(
     if target in source_paths:
         raise ValueError("The output archive cannot be one of its own input files.")
 
-    total = sum(item.path.stat().st_size for item in items)
+    total = sum(item.size for item in items)
     completed = 0
     fd, temp_name = tempfile.mkstemp(
         prefix=f".{target.name}.", suffix=".tmp", dir=str(target.parent)
@@ -75,11 +129,24 @@ def create_zip(
     temp_path = Path(temp_name)
     try:
         with zipfile.ZipFile(
-            temp_path, "w", compression=COMPRESSION[compression], allowZip64=True
+            temp_path,
+            "w",
+            compression=method,
+            compresslevel=level,
+            allowZip64=True,
+            strict_timestamps=False,  # files dated before 1980 no longer abort the job
         ) as archive:
             for item in items:
-                archive.write(item.path, arcname=item.archive_name)
-                completed += item.path.stat().st_size
+                if item.is_dir:
+                    archive.write(item.path, arcname=item.archive_name)
+                else:
+                    store_only = item.path.suffix.lower() in STORE_ONLY_EXTENSIONS
+                    archive.write(
+                        item.path,
+                        arcname=item.archive_name,
+                        compress_type=zipfile.ZIP_STORED if store_only else None,
+                    )
+                completed += item.size
                 if progress:
                     progress(completed, total, item.archive_name)
         # Validate before replacing a possibly existing output.
@@ -87,6 +154,10 @@ def create_zip(
             bad_member = archive.testzip()
             if bad_member is not None:
                 raise zipfile.BadZipFile(f"Archive validation failed: {bad_member}")
+        try:
+            os.chmod(temp_path, 0o644)  # mkstemp creates 0600
+        except OSError:
+            pass
         os.replace(temp_path, target)
         if progress:
             progress(total, total, "Done")
