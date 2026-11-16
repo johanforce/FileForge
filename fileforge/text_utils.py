@@ -181,14 +181,14 @@ BLOCK_HTML_TAGS = {
 def _minify_html(value: str) -> str:
     """Remove formatting whitespace while preserving meaningful inline and raw-text content."""
     token_re = re.compile(
-        r"(?is)(<(script|style|pre|textarea|code)\\b[^>]*>.*?</\\2\\s*>"
+        r"(?is)(<(script|style|pre|textarea|code)\b[^>]*>.*?</\2\s*>"
         r"|<!--.*?-->|<![^>]*>|</?[^>]+>)|([^<]+)"
     )
     tokens = [match.group(0) for match in token_re.finditer(value)]
     output: list[str] = []
 
     def tag_info(token: str):
-        match = re.match(r"</?\\s*([\\w:-]+)", token)
+        match = re.match(r"</?\s*([\w:-]+)", token)
         if not match:
             return None, False
         return match.group(1).lower(), token.startswith("</")
@@ -205,17 +205,16 @@ def _minify_html(value: str) -> str:
             following = next((item for item in tokens[index + 1:] if item.startswith("<")), "")
             prev_name, _ = tag_info(previous)
             next_name, _ = tag_info(following)
-            if (prev_name in BLOCK_HTML_TAGS) or (next_name in BLOCK_HTML_TAGS):
+            if prev_name in BLOCK_HTML_TAGS or next_name in BLOCK_HTML_TAGS:
                 continue
             if previous and following:
                 output.append(" ")
             continue
 
         # HTML collapses ordinary text whitespace visually; retain a single separator.
-        output.append(re.sub(r"[\\t\\r\\n\\f ]+", " ", token))
+        output.append(re.sub(r"[\t\r\n\f ]+", " ", token))
 
     return "".join(output).strip()
-
 
 def _pretty_html(value: str, indent_size: int = 2) -> str:
     """Format HTML fragments and break tags with multiple attributes onto lines."""
@@ -357,10 +356,10 @@ def process_text(
         result["output"] = ET.tostring(root, encoding="unicode", short_empty_elements=True)
 
     elif operation == "html_to_string":
-        compact = _minify_html(_decode_html_escapes(text))
-        escaped = (compact.replace("\\\\", "\\\\\\\\").replace('"', '\\\\"')
-                   .replace("\\t", "\\\\t").replace("\\r", "\\\\r")
-                   .replace("\\n", "\\\\n"))
+        compact = _minify_html(text)
+        escaped = (compact.replace("\\", "\\\\").replace('"', '\\"')
+                   .replace("\t", "\\t").replace("\r", "\\r")
+                   .replace("\n", "\\n"))
         result["output"] = f'"{escaped}"'
 
     elif operation == "string_to_html":
