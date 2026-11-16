@@ -2233,7 +2233,6 @@ class MainWindow(QMainWindow):
         page = QWidget()
         layout = QVBoxLayout(page)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(input_editor.parentWidget().parentWidget() if False else QWidget()) if False else None
         # Editors are already parented into their dedicated splitter; this page
         # receives the splitter through the editor's container.
         editor_splitter = input_editor.parentWidget().parentWidget()
