@@ -1403,6 +1403,21 @@ class MainWindow(QMainWindow):
         return str(Path.home())
 
     def closeEvent(self, event):
+        if (
+            not self._force_quit
+            and self.tray_icon is not None
+            and self.settings.value("preferences/minimize_to_tray", False, type=bool)
+        ):
+            self.hide()
+            event.ignore()
+            self.tray_icon.showMessage(
+                APP_NAME,
+                "FileForge vẫn đang chạy trong khay hệ thống.",
+                QSystemTrayIcon.MessageIcon.Information,
+                3500,
+            )
+            return
+
         # A running QThread must not be destroyed while the application closes.
         if self.busy or self.text_busy:
             QMessageBox.information(
@@ -3302,6 +3317,25 @@ class MainWindow(QMainWindow):
         output_location = Path(destination).parent if self.mode == "zip" else Path(destination)
         self._remember_last_directory("paths/last_output_directory", output_location)
 
+        operation = {
+            "zip": "Nén ZIP",
+            "extract": "Giải nén ZIP",
+            "image": f"Chuyển ảnh sang {output_format}",
+        }.get(self.mode, self.mode)
+        self._task_context = {
+            "operation": operation,
+            "inputs": list(paths),
+            "output_folder": (
+                str(Path(destination).parent) if self.mode == "zip" else destination
+            ),
+            "started_at": time.perf_counter(),
+        }
+        self.logger.info(
+            "Task started: operation=%s inputs=%d",
+            operation,
+            len(paths),
+        )
+
         self.set_busy(True)
         self.progress_area.show()
         self.progress.setValue(0)
@@ -3333,6 +3367,8 @@ class MainWindow(QMainWindow):
         self.progress_text.setText(f"{prefix}: {name}")
 
     def show_result(self, title: str, message: str, folder: str, details: str = ""):
+        if not self.isVisible() or self.isMinimized():
+            return
         dialog = QMessageBox(self)
         dialog.setWindowTitle(title)
         dialog.setText(message)
@@ -3353,6 +3389,12 @@ class MainWindow(QMainWindow):
         if mode == "zip":
             path = Path(result["path"])
             self.progress_text.setText("Đã tạo tệp ZIP")
+            self._record_task_history(
+                "success",
+                outputs=[str(path)],
+                summary=f"Đã tạo {path.name}",
+            )
+            self._notify_user("Hoàn tất", f"Đã tạo {path.name}")
             self.show_result(
                 "Hoàn tất",
                 "Tệp ZIP đã được tạo thành công.",
@@ -3361,48 +3403,79 @@ class MainWindow(QMainWindow):
             )
             return
 
-        outputs = result["outputs"]
+        outputs = [str(path) for path in result["outputs"]]
         errors = result["errors"]
         output_count = len(outputs)
         error_count = len(errors)
+        status = (
+            "success" if error_count == 0
+            else "partial" if output_count
+            else "failed"
+        )
+        context = self._task_context or {}
+        folder = context.get("output_folder", str(Path.home()))
 
         if mode == "extract":
             self.progress_text.setText("Đã hoàn tất giải nén")
             title = "Hoàn tất giải nén"
             message = f"Đã giải nén thành công {output_count} tệp ZIP."
-            folder = str(Path(outputs[0]).parent) if outputs else str(Path.home())
         else:
             self.progress_text.setText("Đã hoàn tất chuyển đổi")
             title = "Hoàn tất chuyển đổi"
             message = f"Đã chuyển đổi thành công {output_count} ảnh."
-            folder = str(Path(outputs[0]).parent) if outputs else str(Path.home())
 
         details = ""
         if error_count:
             details = "\n".join(
-                f"{Path(path).name}: {message}"
-                for path, message in errors[:10]
+                f"{Path(path).name}: {error}"
+                for path, error in errors[:10]
             )
             if error_count > 10:
                 details += f"\n… và {error_count - 10} lỗi khác."
+
+        summary = (
+            f"Hoàn tất {output_count} mục"
+            if status == "success"
+            else f"Hoàn tất {output_count}/{output_count + error_count} mục"
+        )
+        self._record_task_history(
+            status,
+            outputs=outputs,
+            summary=summary,
+            error_message=details,
+        )
+
         if not output_count:
-            QMessageBox.warning(
-                self,
-                "Không có tệp được xử lý",
-                "Không có tệp nào được xử lý thành công.",
-            )
-            if details:
-                QMessageBox.information(self, "Chi tiết lỗi", details)
+            self._notify_user("Tác vụ thất bại", f"{error_count} mục không xử lý được")
+            if self.isVisible() and not self.isMinimized():
+                QMessageBox.warning(
+                    self,
+                    "Không có tệp được xử lý",
+                    "Không có tệp nào được xử lý thành công. "
+                    "Xem lịch sử tác vụ để biết chi tiết.",
+                )
+                if details:
+                    QMessageBox.information(self, "Chi tiết lỗi", details)
             return
+
         if error_count:
             message += f"\nBỏ qua {error_count} tệp bị lỗi."
+        self._notify_user(title, summary)
         self.show_result(title, message, folder, details)
 
     def on_failure(self, message: str):
         self.progress_text.setText("Tác vụ không thành công")
-        QMessageBox.critical(
-            self, "Có lỗi xảy ra", f"Không thể hoàn thành tác vụ.\n\n{message}"
+        self.logger.error("Task failed: %s", message)
+        self._record_task_history(
+            "failed",
+            summary="Tác vụ không thành công",
+            error_message=message,
         )
+        self._notify_user("Tác vụ thất bại", message[:180])
+        if self.isVisible() and not self.isMinimized():
+            QMessageBox.critical(
+                self, "Có lỗi xảy ra", f"Không thể hoàn thành tác vụ.\n\n{message}"
+            )
 
 
 class SplashScreen(QWidget):
@@ -3616,8 +3689,13 @@ class SplashScreen(QWidget):
 def main():
     _set_windows_app_id()
     app = QApplication(sys.argv)
+    app.setOrganizationName("JohanForce")
+    app.setOrganizationDomain("github.com/johanforce")
     app.setApplicationName(APP_NAME)
     app.setApplicationDisplayName(APP_NAME)
+    app_logger = configure_app_logging()
+    install_exception_logging(app_logger)
+    app_logger.info("FileForge starting")
     app.setStyle("Fusion")
     app.setStyleSheet(STYLE)
     app.setFont(QFont("SF Pro Display", 10))
