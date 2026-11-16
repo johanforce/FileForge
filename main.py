@@ -3613,6 +3613,7 @@ class MainWindow(QMainWindow):
                     QMessageBox.information(self, translate_text("Chi tiết lỗi"), details)
             return
 
+        message = translate_text(message)
         if error_count:
             message += translate_text(f"\nBỏ qua {error_count} tệp bị lỗi.")
         self._notify_user(title, summary)
