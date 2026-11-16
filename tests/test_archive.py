@@ -25,6 +25,19 @@ class ArchiveTests(unittest.TestCase):
                 self.assertEqual(archive.read("docs/guide.txt"), b"guide")
                 self.assertIsNone(archive.testzip())
 
+    def test_streamed_zip_member_round_trips_large_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            payload = (b"FileForge-streamed-zip-" * 100000)
+            source = root / "large.txt"
+            source.write_bytes(payload)
+            target = root / "large.zip"
+
+            create_zip([source], target)
+
+            with zipfile.ZipFile(target, "r") as archive:
+                self.assertEqual(archive.read("large.txt"), payload)
+                self.assertIsNone(archive.testzip())
     def test_empty_folder_is_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
             folder = Path(tmp) / "empty"
