@@ -6,7 +6,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtCore import QEventLoop, QThread, QTimer, Qt
 from PySide6.QtWidgets import QApplication, QListView
 
-from main import JSONTreeWidget, MainWindow, StyledComboBox, TextTaskWorker
+from main import JSONTreeWidget, MainWindow, StyledComboBox, TaskWorker, TextTaskWorker
 
 
 class UISmokeTests(unittest.TestCase):
@@ -14,6 +14,37 @@ class UISmokeTests(unittest.TestCase):
     def setUpClass(cls):
         cls.app = QApplication.instance() or QApplication([])
         cls.app.setQuitOnLastWindowClosed(False)
+
+    def test_file_task_worker_honors_cancel_before_start(self):
+        worker = TaskWorker(
+            "zip", [], "unused.zip"
+        )
+        worker.request_cancel()
+        loop = QEventLoop()
+        cancelled = []
+        failures = []
+        worker.cancelled.connect(lambda outputs: (cancelled.append(outputs), loop.quit()))
+        worker.failed.connect(lambda message: (failures.append(message), loop.quit()))
+        QTimer.singleShot(0, worker.start)
+        QTimer.singleShot(5000, loop.quit)
+        loop.exec()
+        worker.wait()
+        self.assertEqual(cancelled, [[]])
+        self.assertEqual(failures, [])
+
+    def test_cancel_button_is_visible_only_while_file_task_is_busy(self):
+        window = MainWindow()
+        window.show()
+        self.app.processEvents()
+        self.assertTrue(window.cancel_task_btn.isHidden())
+        window.set_busy(True)
+        self.app.processEvents()
+        self.assertTrue(window.cancel_task_btn.isVisible())
+        window.set_busy(False)
+        self.assertTrue(window.cancel_task_btn.isHidden())
+        window.close()
+        window.deleteLater()
+        self.app.processEvents()
 
     def test_dropdown_uses_custom_chevron_and_rounded_popup_frame(self):
         combo = StyledComboBox()

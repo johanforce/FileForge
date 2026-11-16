@@ -5,6 +5,8 @@ import difflib
 import html
 import re
 import sys
+import threading
+import time
 import traceback
 from pathlib import Path
 
@@ -17,6 +19,7 @@ from PySide6.QtCore import (
     QPoint,
     QPointF,
     QPropertyAnimation,
+    QSettings,
     QRectF,
     QSize,
     Qt,
@@ -27,6 +30,7 @@ from PySide6.QtCore import (
     Signal,
 )
 from PySide6.QtGui import (
+    QAction,
     QBrush,
     QColor,
     QDesktopServices,
@@ -48,12 +52,17 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import (
     QApplication,
     QAbstractItemView,
+    QDialog,
+    QDialogButtonBox,
+    QMenu,
+    QSystemTrayIcon,
     QComboBox,
     QCheckBox,
     QFileDialog,
     QFileIconProvider,
     QFrame,
     QHeaderView,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
     QMainWindow,
@@ -80,6 +89,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from fileforge import __version__ as APP_VERSION
+from fileforge.i18n import get_language, set_language, translate_object_tree, translate_text
+
 from fileforge.archive import create_zip
 from fileforge.extraction import extract_archives
 from fileforge.images import SUPPORTED_IMAGE_EXTENSIONS, convert_images
@@ -89,6 +101,13 @@ from fileforge.curl_utils import parse_http_request
 from fileforge.crypto_utils import (
     aes_decrypt, aes_encrypt, generate_aes_key, generate_iv, url_decode, url_encode,
 )
+from fileforge.preferences import PreferencesDialog
+from fileforge.app_services import (
+    TaskHistoryStore, app_data_directory, configure_app_logging,
+    install_exception_logging,
+)
+from fileforge.history_dialog import TaskHistoryDialog
+from fileforge.task_control import TaskCancelledError
 
 
 # --------------------------------------------------------------------------
@@ -505,6 +524,7 @@ class TaskWorker(QThread):
     progress = Signal(int, int, str)
     completed = Signal(object)
     failed = Signal(str)
+    cancelled = Signal(object)
 
     def __init__(
         self,
@@ -522,6 +542,11 @@ class TaskWorker(QThread):
         self.compression = compression
         self.output_format = output_format
         self.quality = quality
+        self._cancel_event = threading.Event()
+
+    def request_cancel(self):
+        """Request a cooperative stop; never forcibly terminate the worker thread."""
+        self._cancel_event.set()
 
     def run(self):
         try:
@@ -531,6 +556,7 @@ class TaskWorker(QThread):
                     self.destination,
                     self.compression,
                     lambda done, total, name: self.progress.emit(done, total, name),
+                    is_cancelled=self._cancel_event.is_set,
                 )
                 self.completed.emit({"mode": "zip", "path": str(result)})
             elif self.mode == "extract":
@@ -538,6 +564,7 @@ class TaskWorker(QThread):
                     self.paths,
                     self.destination,
                     lambda done, total, name: self.progress.emit(done, total, name),
+                    is_cancelled=self._cancel_event.is_set,
                 )
                 self.completed.emit({
                     "mode": "extract",
@@ -551,6 +578,7 @@ class TaskWorker(QThread):
                     self.output_format,
                     self.quality,
                     lambda done, total, name: self.progress.emit(done, total, name),
+                    is_cancelled=self._cancel_event.is_set,
                 )
                 self.completed.emit({
                     "mode": "image",
@@ -559,6 +587,8 @@ class TaskWorker(QThread):
                 })
             else:
                 raise ValueError("Tác vụ không hợp lệ.")
+        except TaskCancelledError as exc:
+            self.cancelled.emit(exc.completed_outputs)
         except Exception as exc:
             self.failed.emit(str(exc))
 
@@ -767,8 +797,8 @@ class DropArea(QFrame):
         )
 
     def set_instruction(self, title: str, hint: str):
-        self.title.setText(title)
-        self.hint.setText(hint)
+        self.title.setText(translate_text(title))
+        self.hint.setText(translate_text(hint))
 
     def _set_drag_active(self, active: bool):
         self.setProperty("dragActive", active)
@@ -952,10 +982,23 @@ class ScrollableTabWidget(QWidget):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("FileForge")
+        self.setWindowTitle(f"FileForge v{APP_VERSION}")
         self.setWindowIcon(load_app_icon())
+        self.settings = QSettings("JohanForce", APP_NAME)
+        self.settings.setFallbacksEnabled(False)
+        self.app_data_dir = app_data_directory()
+        self.logger = configure_app_logging(self.app_data_dir)
+        self.history_store = TaskHistoryStore(self.app_data_dir / "history.sqlite3")
+        self._task_context: dict | None = None
+        self._text_task_context: dict | None = None
+        self._force_quit = False
+        self.tray_icon: QSystemTrayIcon | None = None
         self.resize(1040, 740)
         self.setMinimumSize(860, 620)
+        if self.settings.value("preferences/restore_session", True, type=bool):
+            saved_geometry = self.settings.value("window/geometry")
+            if saved_geometry:
+                self.restoreGeometry(saved_geometry)
 
         self.paths: list[str] = []
         self.worker: TaskWorker | None = None
@@ -1092,8 +1135,9 @@ class MainWindow(QMainWindow):
         controls.addWidget(self.compression_label)
 
         self.compression = StyledComboBox()
-        self.compression.addItems(list(COMPRESSION_OPTIONS.keys()))
-        self.compression.setCurrentText("Cân bằng")
+        for label, compression_code in COMPRESSION_OPTIONS.items():
+            self.compression.addItem(label, compression_code)
+        self.compression.setCurrentIndex(max(0, self.compression.findData("Balanced")))
         controls.addWidget(self.compression)
 
         self.extract_hint = QLabel("Mỗi tệp ZIP sẽ được giải nén vào một thư mục riêng")
@@ -1141,13 +1185,19 @@ class MainWindow(QMainWindow):
         progress_layout = QVBoxLayout(self.progress_area)
         progress_layout.setContentsMargins(0, 2, 0, 0)
         progress_layout.setSpacing(5)
+        progress_header = QHBoxLayout()
         self.progress_text = QLabel("Đang chuẩn bị…")
         self.progress_text.setObjectName("Muted")
+        progress_header.addWidget(self.progress_text, 1)
+        self.cancel_task_btn = QPushButton("Hủy tác vụ")
+        self.cancel_task_btn.clicked.connect(self.request_cancel_task)
+        self.cancel_task_btn.hide()
+        progress_header.addWidget(self.cancel_task_btn)
+        progress_layout.addLayout(progress_header)
         self.progress = QProgressBar()
         self.progress.setRange(0, 100)
         self.progress.setValue(0)
         self.progress.setTextVisible(False)
-        progress_layout.addWidget(self.progress_text)
         progress_layout.addWidget(self.progress)
         action_layout.addWidget(self.progress_area)
         self.progress_area.hide()
@@ -1175,8 +1225,384 @@ class MainWindow(QMainWindow):
         outer.addWidget(self.aes_panel, 1)
         self.aes_panel.hide()
 
-        self.on_mode_changed(0)
+        self._restore_saved_options()
+        self._build_menu_bar()
+        self._setup_system_tray()
+        self.logger.info("FileForge main window initialized")
+        if self.settings.value("preferences/restore_session", True, type=bool):
+            saved_tab = self.settings.value("window/last_tab", 0, type=int)
+            if 0 <= saved_tab < self.tabs.count():
+                self.tabs.setCurrentIndex(saved_tab)
+        self.on_mode_changed(self.tabs.currentIndex())
         self.refresh_queue()
+        translate_object_tree(self)
+
+    def _build_menu_bar(self):
+        app_menu = self.menuBar().addMenu(translate_text("Tệp"))
+
+        preferences_action = QAction("Tùy chọn…", self)
+        preferences_action.setShortcut(QKeySequence("Ctrl+,"))
+        preferences_action.triggered.connect(self.open_preferences)
+        app_menu.addAction(preferences_action)
+
+        history_action = QAction("Lịch sử tác vụ…", self)
+        history_action.setShortcut(QKeySequence("Ctrl+H"))
+        history_action.triggered.connect(self.open_task_history)
+        app_menu.addAction(history_action)
+
+        config_action = QAction("Mở thư mục cấu hình", self)
+        config_action.triggered.connect(self.open_settings_folder)
+        app_menu.addAction(config_action)
+
+        logs_action = QAction("Mở thư mục nhật ký", self)
+        logs_action.triggered.connect(self.open_logs_folder)
+        app_menu.addAction(logs_action)
+
+        app_menu.addSeparator()
+        quit_action = QAction("Thoát", self)
+        quit_action.setShortcut(QKeySequence("Ctrl+Q"))
+        quit_action.triggered.connect(self.quit_application)
+        app_menu.addAction(quit_action)
+
+        help_menu = self.menuBar().addMenu(translate_text("Trợ giúp"))
+        about_action = QAction("Giới thiệu FileForge", self)
+        about_action.triggered.connect(self.show_about)
+        help_menu.addAction(about_action)
+
+        help_menu.addSeparator()
+        acknowledgments_action = QAction("Lời cảm ơn", self)
+        acknowledgments_action.triggered.connect(self.show_acknowledgments)
+        help_menu.addAction(acknowledgments_action)
+
+        license_action = QAction("Giấy phép", self)
+        license_action.triggered.connect(self.show_license)
+        help_menu.addAction(license_action)
+
+    def _show_document_dialog(self, title: str, filename: str) -> None:
+        document_path = resource_path("assets", filename)
+        try:
+            document_text = document_path.read_text(encoding="utf-8")
+        except OSError as exc:
+            QMessageBox.warning(self, title, str(exc))
+            return
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle(title)
+        dialog.setMinimumSize(680, 480)
+        dialog.resize(780, 580)
+
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(24, 22, 24, 20)
+        layout.setSpacing(14)
+
+        heading = QLabel(title)
+        heading.setObjectName("Section")
+        layout.addWidget(heading)
+
+        content = QPlainTextEdit(dialog)
+        content.setReadOnly(True)
+        content.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth)
+        content.setPlainText(document_text)
+        layout.addWidget(content, 1)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close, parent=dialog)
+        close_button = buttons.button(QDialogButtonBox.StandardButton.Close)
+        if close_button is not None:
+            close_button.setText(translate_text("Đóng"))
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+        dialog.exec()
+
+    def show_acknowledgments(self) -> None:
+        self._show_document_dialog(translate_text("Lời cảm ơn"), "ACKNOWLEDGMENTS.md")
+
+    def show_license(self) -> None:
+        self._show_document_dialog(translate_text("Giấy phép"), "LICENSE")
+
+    def open_task_history(self):
+        dialog = TaskHistoryDialog(self.history_store, self)
+        dialog.exec()
+
+    def open_logs_folder(self):
+        folder = self.app_data_dir / "logs"
+        folder.mkdir(parents=True, exist_ok=True)
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
+
+    def _setup_system_tray(self):
+        if not QSystemTrayIcon.isSystemTrayAvailable():
+            self.logger.info("System tray is not available on this desktop session")
+            return
+        self.tray_icon = QSystemTrayIcon(load_app_icon(), self)
+        self.tray_icon.setToolTip(APP_NAME)
+        tray_menu = QMenu(self)
+        show_action = QAction("Mở FileForge", self)
+        show_action.triggered.connect(self.restore_from_tray)
+        tray_menu.addAction(show_action)
+        history_action = QAction("Lịch sử tác vụ", self)
+        history_action.triggered.connect(self.open_task_history)
+        tray_menu.addAction(history_action)
+        tray_menu.addSeparator()
+        exit_action = QAction("Thoát FileForge", self)
+        exit_action.triggered.connect(self.quit_application)
+        tray_menu.addAction(exit_action)
+        self.tray_icon.setContextMenu(tray_menu)
+        self.tray_icon.activated.connect(self._on_tray_activated)
+        self.tray_icon.show()
+
+    def _on_tray_activated(self, reason):
+        if reason in (
+            QSystemTrayIcon.ActivationReason.Trigger,
+            QSystemTrayIcon.ActivationReason.DoubleClick,
+        ):
+            self.restore_from_tray()
+
+    def restore_from_tray(self):
+        self.showNormal()
+        self.raise_()
+        self.activateWindow()
+
+    def quit_application(self):
+        self._force_quit = True
+        self.close()
+        if self.isVisible():
+            # closeEvent may reject the request while a worker is still active.
+            self._force_quit = False
+
+    def quit_from_tray(self):
+        self.quit_application()
+
+    def _notify_user(self, title: str, message: str):
+        if not self.settings.value("preferences/show_notifications", True, type=bool):
+            return
+        if self.tray_icon is None or not self.tray_icon.isVisible():
+            return
+        if self.isVisible() and not self.isMinimized():
+            return
+        self.tray_icon.showMessage(
+            APP_NAME, f"{translate_text(title)}: {translate_text(message)}",
+            QSystemTrayIcon.MessageIcon.Information, 5000
+        )
+
+    def _record_task_history(self, status: str, outputs=None, summary: str = "", error_message: str = ""):
+        context = self._task_context
+        if not context:
+            return
+        duration_ms = int((time.perf_counter() - context["started_at"]) * 1000)
+        try:
+            self.history_store.record(
+                operation=context["operation"], status=status,
+                inputs=context["inputs"], outputs=outputs or [],
+                output_folder=context["output_folder"], duration_ms=duration_ms,
+                summary=summary, error_message=error_message,
+            )
+            self.logger.info(
+                "Task finished: operation=%s status=%s inputs=%d duration_ms=%d",
+                context["operation"], status, len(context["inputs"]), duration_ms,
+            )
+        except Exception:
+            self.logger.exception("Could not write task history")
+        finally:
+            self._task_context = None
+
+    def _record_text_task_history(self, status: str, summary: str):
+        context = self._text_task_context
+        if not context:
+            return
+        duration_ms = int((time.perf_counter() - context["started_at"]) * 1000)
+        try:
+            self.history_store.record(
+                operation=context["operation"],
+                status=status,
+                inputs=["Dữ liệu văn bản"],
+                duration_ms=duration_ms,
+                summary=summary,
+            )
+            self.logger.info(
+                "Text task finished: operation=%s status=%s duration_ms=%d",
+                context["operation"], status, duration_ms,
+            )
+        except Exception:
+            self.logger.exception("Could not write text task history")
+        finally:
+            self._text_task_context = None
+
+    def _restore_saved_options(self):
+        if not self.settings.value(
+            "preferences/remember_operation_options", True, type=bool
+        ):
+            return
+
+        compression = self.settings.value("operations/compression", "Balanced")
+        compression_index = self.compression.findData(compression)
+        if compression_index < 0:
+            # Compatibility with preferences saved by pre-1.0.0 builds.
+            compression_index = self.compression.findText(str(compression))
+        if compression_index >= 0:
+            self.compression.setCurrentIndex(compression_index)
+
+        output_format = self.settings.value("operations/image_format", "JPG")
+        if output_format in {"JPG", "PNG", "WEBP"}:
+            self.format_combo.setCurrentText(output_format)
+
+        quality = self.settings.value("operations/image_quality", 90, type=int)
+        self.quality_slider.setValue(max(50, min(100, quality)))
+
+    def open_preferences(self):
+        previous_language = get_language()
+        dialog = PreferencesDialog(self.settings, self, tray_available=self.tray_icon is not None)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            dialog.save_to_settings()
+            if not self.settings.value(
+                "preferences/remember_operation_options", True, type=bool
+            ):
+                self.settings.remove("operations")
+            self.settings.sync()
+            selected_language = str(
+                self.settings.value("preferences/language", "vi") or "vi"
+            )
+            set_language(selected_language)
+            if selected_language != previous_language:
+                # Re-translate existing widgets without rebuilding the current
+                # operation panel or resetting an active task's progress UI.
+                translate_object_tree(self)
+                QMessageBox.information(
+                    self,
+                    translate_text("Ngôn ngữ"),
+                    translate_text("Ngôn ngữ đã được cập nhật."),
+                )
+
+    def open_settings_folder(self):
+        folder = Path(self.settings.fileName()).expanduser().parent
+        try:
+            folder.mkdir(parents=True, exist_ok=True)
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
+        except OSError as exc:
+            QMessageBox.warning(
+                self, translate_text("Không thể mở thư mục cấu hình"), str(exc)
+            )
+
+    def show_about(self):
+        dialog = QDialog(self)
+        dialog.setWindowTitle(translate_text("Giới thiệu FileForge"))
+        dialog.setFixedWidth(460)
+
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(28, 26, 28, 22)
+        layout.setSpacing(16)
+
+        app_title = QLabel("FileForge")
+        app_title.setObjectName("Section")
+        app_title.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        layout.addWidget(app_title)
+
+        version = QLabel(f"{translate_text('Phiên bản')} {APP_VERSION}")
+        version.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        layout.addWidget(version)
+
+        description = QLabel(
+            translate_text("Công cụ desktop hỗ trợ xử lý tệp, dữ liệu văn bản và mã hóa.")
+        )
+        description.setWordWrap(True)
+        description.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        layout.addWidget(description)
+
+        privacy = QLabel(
+            translate_text("File được xử lý trực tiếp trên máy tính của bạn.")
+        )
+        privacy.setWordWrap(True)
+        privacy.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        layout.addWidget(privacy)
+
+        license_info = QLabel(translate_text("Phát hành theo giấy phép MIT"))
+        license_info.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        layout.addWidget(license_info)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close, parent=dialog)
+        close_button = buttons.button(QDialogButtonBox.StandardButton.Close)
+        if close_button is not None:
+            close_button.setText(translate_text("Đóng"))
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+        dialog.exec()
+
+    def _remember_last_directory(self, key: str, path: str | Path):
+        if self.settings.value(
+            "preferences/remember_last_directory", True, type=bool
+        ):
+            candidate = Path(path).expanduser()
+            if candidate.is_file():
+                candidate = candidate.parent
+            if candidate.is_dir():
+                self.settings.setValue(key, str(candidate.resolve()))
+
+    def _input_start_directory(self) -> str:
+        if self.settings.value(
+            "preferences/remember_last_directory", True, type=bool
+        ):
+            saved = self.settings.value("paths/last_input_directory", "")
+            if saved and Path(saved).expanduser().is_dir():
+                return str(Path(saved).expanduser())
+        return str(Path.home())
+
+    def _output_start_directory(self) -> str:
+        candidates = [
+            self.settings.value("paths/default_output_directory", ""),
+            self.settings.value("paths/last_output_directory", ""),
+        ]
+        if not self.settings.value(
+            "preferences/remember_last_directory", True, type=bool
+        ):
+            candidates = candidates[:1]
+        for candidate in candidates:
+            if candidate and Path(candidate).expanduser().is_dir():
+                return str(Path(candidate).expanduser())
+        return str(Path.home())
+
+    def closeEvent(self, event):
+        if (
+            not self._force_quit
+            and self.tray_icon is not None
+            and self.settings.value("preferences/minimize_to_tray", False, type=bool)
+        ):
+            self.hide()
+            event.ignore()
+            self.tray_icon.showMessage(
+                APP_NAME,
+                translate_text("FileForge vẫn đang chạy trong khay hệ thống."),
+                QSystemTrayIcon.MessageIcon.Information,
+                3500,
+            )
+            return
+
+        # A running QThread must not be destroyed while the application closes.
+        if self.busy or self.text_busy:
+            QMessageBox.information(
+                self,
+                translate_text("Tác vụ đang chạy"),
+                translate_text("Hãy chờ tác vụ hiện tại hoàn tất trước khi thoát FileForge."),
+            )
+            event.ignore()
+            return
+
+        if self.settings.value("preferences/restore_session", True, type=bool):
+            self.settings.setValue("window/geometry", self.saveGeometry())
+            self.settings.setValue("window/last_tab", self.tabs.currentIndex())
+
+        if self.settings.value(
+            "preferences/remember_operation_options", True, type=bool
+        ):
+            self.settings.setValue(
+                "operations/compression", self.compression.currentData() or "Balanced"
+            )
+            self.settings.setValue(
+                "operations/image_format", self.format_combo.currentText()
+            )
+            self.settings.setValue(
+                "operations/image_quality", self.quality_slider.value()
+            )
+
+        self.settings.sync()
+        super().closeEvent(event)
 
     def _build_text_pane(self, title: str, placeholder: str, read_only: bool):
         pane = QFrame()
@@ -1478,7 +1904,7 @@ class MainWindow(QMainWindow):
         self.input_tree.clear()
         if self.input_pane["stack"].currentIndex() == 1:
             self.input_pane["stack"].setCurrentIndex(0)
-        self.text_status.setText("Nội dung đã thay đổi · hãy thực hiện lại để xem cấu trúc")
+        self.text_status.setText(translate_text("Nội dung đã thay đổi · hãy thực hiện lại để xem cấu trúc"))
 
     def run_text_action(self):
         if self.text_busy:
@@ -1487,7 +1913,7 @@ class MainWindow(QMainWindow):
         source = self.input_editor.toPlainText()
         if not source.strip():
             QMessageBox.information(
-                self, "Chưa có dữ liệu", "Dán JSON hoặc XML vào ô đầu vào trước."
+                self, translate_text("Chưa có dữ liệu"), translate_text("Dán JSON hoặc XML vào ô đầu vào trước.")
             )
             return
 
@@ -1495,6 +1921,18 @@ class MainWindow(QMainWindow):
         class_name = self.text_class_name.text().strip() or "RootModel"
         model_target = self.text_model_target.currentData()
         indent_size = int(self.text_indent.currentData())
+        operation_label = self.text_operation.currentText()
+        input_character_count = len(source)
+        self._text_task_context = {
+            "operation": translate_text(f"Xử lý dữ liệu: {operation_label}"),
+            "input_character_count": input_character_count,
+            "started_at": time.perf_counter(),
+        }
+        self.logger.info(
+            "Text task started: operation=%s input_characters=%d",
+            operation_label,
+            input_character_count,
+        )
 
         self.text_busy = True
         self.tabs.setEnabled(False)
@@ -1502,7 +1940,7 @@ class MainWindow(QMainWindow):
         self.text_copy_btn.setEnabled(False)
         self.input_editor.setReadOnly(True)
         self.text_progress.show()
-        self.text_status.setText("Đang xử lý trong luồng nền…")
+        self.text_status.setText(translate_text("Đang xử lý trong luồng nền…"))
 
         self.text_worker = TextTaskWorker(
             operation,
@@ -1567,9 +2005,22 @@ class MainWindow(QMainWindow):
             self.output_pane["stack"].setCurrentIndex(0)
 
         size = len(self.input_editor.toPlainText())
-        self.text_status.setText(f"Hoàn tất · {size:,} ký tự đầu vào")
+        self.text_status.setText(translate_text(f"Hoàn tất · {size:,} ký tự đầu vào"))
         self.text_execute_btn.setEnabled(True)
         self.text_copy_btn.setEnabled(bool(result["output"]))
+        input_count = (
+            self._text_task_context["input_character_count"]
+            if self._text_task_context else size
+        )
+        output_count = len(result["output"])
+        self._record_text_task_history(
+            "success",
+            translate_text(f"{input_count:,} ký tự đầu vào → {output_count:,} ký tự đầu ra"),
+        )
+        self._notify_user(
+            translate_text("Hoàn tất xử lý dữ liệu"),
+            translate_text(f"{input_count:,} → {output_count:,} ký tự"),
+        )
 
     def on_text_failed(self, message: str):
         self.text_busy = False
@@ -1577,13 +2028,23 @@ class MainWindow(QMainWindow):
         self.text_execute_btn.setEnabled(True)
         self.input_editor.setReadOnly(False)
         self.text_progress.hide()
-        self.text_status.setText("Không thể xử lý · kiểm tra dữ liệu đầu vào")
-        QMessageBox.warning(
-            self,
-            "Dữ liệu chưa hợp lệ",
-            "Không thể xử lý nội dung. Kiểm tra cú pháp JSON/XML/HTML rồi thử lại.\n\n"
-            + message,
+        self.text_status.setText(translate_text("Không thể xử lý · kiểm tra dữ liệu đầu vào"))
+        self.logger.warning("Text operation failed; input details are not written to logs")
+        self._record_text_task_history(
+            "failed",
+            translate_text("Không thể xử lý dữ liệu đầu vào"),
         )
+        self._notify_user(
+            translate_text("Xử lý dữ liệu thất bại"),
+            translate_text("Kiểm tra cú pháp JSON/XML/HTML"),
+        )
+        if self.isVisible() and not self.isMinimized():
+            QMessageBox.warning(
+                self,
+                translate_text("Dữ liệu chưa hợp lệ"),
+                translate_text("Không thể xử lý nội dung. Kiểm tra cú pháp JSON/XML/HTML rồi thử lại.\n\n")
+                + message,
+            )
 
 
     def swap_text_direction(self):
@@ -1616,7 +2077,7 @@ class MainWindow(QMainWindow):
         self.input_editor.setLineWrapMode(mode)
         self.output_editor.setLineWrapMode(mode)
         self.text_wrap_btn.setText(
-            "Wrap: Bật" if self.text_wrap_enabled else "Wrap: Tắt"
+            translate_text("Wrap: Bật" if self.text_wrap_enabled else "Wrap: Tắt")
         )
 
     def toggle_text_layout(self):
@@ -1624,13 +2085,13 @@ class MainWindow(QMainWindow):
         self.text_splitter.setOrientation(
             Qt.Orientation.Vertical if vertical else Qt.Orientation.Horizontal
         )
-        self.text_layout_btn.setText("Xếp ngang" if vertical else "Xếp dọc")
+        self.text_layout_btn.setText(translate_text("Xếp ngang" if vertical else "Xếp dọc"))
 
     def copy_text_input(self):
         value = self.input_editor.toPlainText()
         if value:
             QApplication.clipboard().setText(value)
-            self.text_status.setText("Đã sao chép nội dung đầu vào")
+            self.text_status.setText(translate_text("Đã sao chép nội dung đầu vào"))
 
     def clear_text_all(self):
         if self.text_busy:
@@ -1647,11 +2108,11 @@ class MainWindow(QMainWindow):
         self._html_folded_blocks.clear()
         self.text_fold_btn.hide()
         self.text_unfold_btn.hide()
-        self.text_status.setText("Đã xóa nội dung")
+        self.text_status.setText(translate_text("Đã xóa nội dung"))
 
     def reset_text_splitter(self):
         self.text_splitter.setSizes([1, 1])
-        self.text_status.setText("Đã đưa hai khung về tỷ lệ 50/50")
+        self.text_status.setText(translate_text("Đã đưa hai khung về tỷ lệ 50/50"))
 
     def toggle_text_search(self, target="output"):
         visible = not self.text_search.isVisible() or self._text_search_target != target
@@ -1804,7 +2265,7 @@ class MainWindow(QMainWindow):
             if index in self._html_folded_blocks:
                 self._set_html_block_marker(block, "▶ ")
         self._apply_html_fold_state(blocks)
-        self.text_status.setText("Đã thu gọn các thẻ HTML")
+        self.text_status.setText(translate_text("Đã thu gọn các thẻ HTML"))
 
     def unfold_html_output(self):
         if not self.text_html_mode:
@@ -1815,7 +2276,7 @@ class MainWindow(QMainWindow):
             if block.text().lstrip().startswith("▶ "):
                 self._set_html_block_marker(block, "▼ ")
         self._apply_html_fold_state()
-        self.text_status.setText("Đã mở rộng tất cả thẻ HTML")
+        self.text_status.setText(translate_text("Đã mở rộng tất cả thẻ HTML"))
 
     def _plain_text_result(self):
         """Return conversion output, never the UI-only HTML fold decorations."""
@@ -1831,7 +2292,7 @@ class MainWindow(QMainWindow):
         if not value:
             return
         QApplication.clipboard().setText(value)
-        self.text_status.setText("Đã sao chép kết quả")
+        self.text_status.setText(translate_text("Đã sao chép kết quả"))
 
     @staticmethod
     def format_size(size: int) -> str:
@@ -1873,7 +2334,9 @@ class MainWindow(QMainWindow):
         editor.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
         editor.setTabStopDistance(28)
         editor.textChanged.connect(
-            lambda ed=editor, lbl=count: lbl.setText(f"{len(ed.toPlainText()):,} ký tự")
+            lambda ed=editor, lbl=count: lbl.setText(
+                translate_text(f"{len(ed.toPlainText()):,} ký tự")
+            )
         )
         layout.addWidget(editor, 1)
         return {"widget": pane, "editor": editor, "count": count}
@@ -1933,10 +2396,9 @@ class MainWindow(QMainWindow):
         self.curl_input = QPlainTextEdit()
         self.curl_input.setObjectName("CodeEditor")
         self.curl_input.setPlaceholderText(
-            "Dán request từ DevTools…\n\n"
-            "Ví dụ:\n**METHOD: POST**\n**URL**\n"
-            "**https://example.com/api**\n**HEADERS**\n"
-            "**x-user-sub:**\n**giá-trị-nguyên-văn**"
+            translate_text(
+                "Dán HTTP request từ DevTools hoặc tài liệu vào đây. Ví dụ: POST https://example.com/api"
+            )
         )
         request_layout.addWidget(self.curl_input, 3)
 
@@ -1981,7 +2443,7 @@ class MainWindow(QMainWindow):
             self.curl_input.clear(),
             self.curl_body_input.clear(),
             self.curl_output.clear(),
-            self.curl_status.setText("Đã xóa"),
+            self.curl_status.setText(translate_text("Đã xóa")),
         ))
         actions.addWidget(clear)
         layout.addLayout(actions)
@@ -1995,20 +2457,20 @@ class MainWindow(QMainWindow):
                 body_override=body_override if body_override != "" else None,
             )
         except ValueError as exc:
-            self.curl_status.setText("Không thể phân tích request")
-            QMessageBox.warning(self, "Request chưa hợp lệ", str(exc))
+            self.curl_status.setText(translate_text("Không thể phân tích request"))
+            QMessageBox.warning(self, translate_text("Request chưa hợp lệ"), str(exc))
             return
         self.curl_output.setPlainText(parsed["curl"])
         body_status = " · có body" if parsed.get("body") else ""
         self.curl_status.setText(
-            f"Đã nhận diện {parsed['method']} · {len(parsed['headers'])} headers{body_status}"
+            translate_text(f"Đã nhận diện {parsed['method']} · {len(parsed['headers'])} headers{body_status}")
         )
 
     def copy_curl_result(self):
         value = self.curl_output.toPlainText()
         if value:
             QApplication.clipboard().setText(value)
-            self.curl_status.setText("Đã sao chép lệnh cURL")
+            self.curl_status.setText(translate_text("Đã sao chép lệnh cURL"))
 
     def build_url_panel(self):
         panel = QFrame()
@@ -2083,17 +2545,17 @@ class MainWindow(QMainWindow):
         try:
             result = url_encode(self.url_input.toPlainText(), self.url_component_mode.isChecked())
             self.url_output.setPlainText(result)
-            self.url_status.setText("Đã encode URL")
+            self.url_status.setText(translate_text("Đã encode URL"))
         except (ValueError, UnicodeError) as exc:
-            self.url_status.setText(f"Lỗi: {exc}")
+            self.url_status.setText(translate_text(f"Lỗi: {exc}"))
 
     def decode_url(self):
         try:
             result = url_decode(self.url_input.toPlainText())
             self.url_output.setPlainText(result)
-            self.url_status.setText("Đã decode URL")
+            self.url_status.setText(translate_text("Đã decode URL"))
         except (ValueError, UnicodeError) as exc:
-            self.url_status.setText(f"Lỗi: {exc}")
+            self.url_status.setText(translate_text(f"Lỗi: {exc}"))
 
     def build_aes_panel(self):
         panel = QFrame()
@@ -2109,7 +2571,11 @@ class MainWindow(QMainWindow):
         layout.addWidget(title)
         layout.addWidget(subtitle)
 
-        settings = QHBoxLayout()
+        # Các tham số thuật toán nằm trong một hàng gọn; label luôn sát control.
+        settings = QGridLayout()
+        settings.setContentsMargins(0, 2, 0, 2)
+        settings.setHorizontalSpacing(8)
+        settings.setVerticalSpacing(4)
         self.aes_mode = StyledComboBox()
         self.aes_mode.addItems(["CBC", "GCM", "CTR", "ECB"])
         self.aes_mode.setCurrentText("GCM")
@@ -2118,30 +2584,43 @@ class MainWindow(QMainWindow):
         self.aes_key_bits = StyledComboBox()
         self.aes_key_bits.addItems(["128", "192", "256"])
         self.aes_key_bits.setCurrentText("256")
+        self.aes_key_bits.setToolTip("Chỉ dùng khi bấm Tạo key. Key nhập tay được xác định kích thước từ số byte thực tế.")
         self.aes_key_format = StyledComboBox()
         self.aes_key_format.addItems(["UTF-8", "HEX", "BASE-64"])
         self.aes_key_format.setCurrentText("BASE-64")
-        self.aes_key_bits.setToolTip("Chỉ dùng khi bấm Tạo key. Key nhập tay được xác định kích thước từ số byte thực tế.")
         self.aes_key_format.setToolTip("UTF-8 được dùng trực tiếp làm byte của key, không phải mật khẩu qua KDF. Key sau khi giải mã định dạng phải dài 16, 24 hoặc 32 byte. Key sinh dạng UTF-8 dễ đọc có entropy thấp hơn HEX/Base-64; nên chọn HEX/Base-64 để có key ngẫu nhiên đủ entropy.")
         self.aes_iv_format = StyledComboBox()
         self.aes_iv_format.addItems(["UTF-8", "HEX", "BASE-64"])
         self.aes_iv_format.setCurrentText("BASE-64")
         self.aes_iv_format.setToolTip("IV/nonce UTF-8 được dùng trực tiếp làm byte. IV sinh dạng UTF-8 dễ đọc có entropy thấp hơn HEX/Base-64; nên chọn HEX/Base-64 để có IV ngẫu nhiên đủ entropy.")
-        for label, widget in (
-            ("Cipher mode", self.aes_mode), ("Padding", self.aes_padding),
-            ("Key size (tạo key)", self.aes_key_bits), ("Key format", self.aes_key_format),
-            ("IV format", self.aes_iv_format),
-        ):
-            settings.addWidget(QLabel(label))
-            settings.addWidget(widget)
+        for column, (label, widget) in enumerate((
+            ("Cipher mode", self.aes_mode),
+            ("Padding", self.aes_padding),
+            ("Key size", self.aes_key_bits),
+        )):
+            label_widget = QLabel(label)
+            label_widget.setObjectName("Muted")
+            settings.addWidget(label_widget, 0, column * 2, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            widget.setMinimumWidth(112)
+            widget.setMaximumWidth(148)
+            settings.addWidget(widget, 0, column * 2 + 1)
+        settings.setColumnStretch(6, 1)
         layout.addLayout(settings)
 
+        # KEY và định dạng của nó luôn cùng một dòng để tránh chọn nhầm format.
         key_row = QHBoxLayout()
-        key_row.addWidget(QLabel("KEY"))
+        key_row.setSpacing(8)
+        key_label = QLabel("KEY")
+        key_label.setMinimumWidth(78)
+        key_row.addWidget(key_label)
         self.aes_key_input = QLineEdit()
+        self.aes_key_input.setMinimumWidth(0)
         self.aes_key_input.setEchoMode(QLineEdit.EchoMode.Password)
-        self.aes_key_input.setPlaceholderText("Key theo định dạng đã chọn…")
+        self.aes_key_input.setPlaceholderText("Nhập key theo định dạng bên cạnh…")
         key_row.addWidget(self.aes_key_input, 1)
+        self.aes_key_format.setMinimumWidth(118)
+        self.aes_key_format.setMaximumWidth(138)
+        key_row.addWidget(self.aes_key_format)
         self.aes_show_key = QCheckBox("Hiện")
         self.aes_show_key.toggled.connect(
             lambda visible: self.aes_key_input.setEchoMode(
@@ -2154,12 +2633,19 @@ class MainWindow(QMainWindow):
         key_row.addWidget(gen_key)
         layout.addLayout(key_row)
 
+        # IV/nonce và định dạng cũng nằm cùng dòng; control tự co khi cửa sổ hẹp.
         iv_row = QHBoxLayout()
+        iv_row.setSpacing(8)
         self.aes_iv_label = QLabel("IV / NONCE")
+        self.aes_iv_label.setMinimumWidth(78)
         iv_row.addWidget(self.aes_iv_label)
         self.aes_iv_input = QLineEdit()
+        self.aes_iv_input.setMinimumWidth(0)
         self.aes_iv_input.setPlaceholderText("Tự sinh khi Encode; lưu lại để Decode")
         iv_row.addWidget(self.aes_iv_input, 1)
+        self.aes_iv_format.setMinimumWidth(118)
+        self.aes_iv_format.setMaximumWidth(138)
+        iv_row.addWidget(self.aes_iv_format)
         self.aes_generate_iv_btn = QPushButton("Tạo IV")
         self.aes_generate_iv_btn.clicked.connect(self.generate_aes_iv_ui)
         iv_row.addWidget(self.aes_generate_iv_btn)
@@ -2274,9 +2760,9 @@ class MainWindow(QMainWindow):
                 generate_aes_key(int(self.aes_key_bits.currentText()), key_format)
             )
             if key_format == "UTF-8":
-                self.aes_status.setText("Đã tạo key UTF-8 tiện nhập; entropy thấp hơn HEX/Base-64. Nên dùng HEX/Base-64 cho key ngẫu nhiên.")
+                self.aes_status.setText(translate_text("Đã tạo key UTF-8 tiện nhập; entropy thấp hơn HEX/Base-64. Nên dùng HEX/Base-64 cho key ngẫu nhiên."))
             else:
-                self.aes_status.setText("Đã tạo key ngẫu nhiên bằng CSPRNG")
+                self.aes_status.setText(translate_text("Đã tạo key ngẫu nhiên bằng CSPRNG"))
         except ValueError as exc:
             self.aes_status.setText(str(exc))
 
@@ -2284,14 +2770,14 @@ class MainWindow(QMainWindow):
         mode = self.aes_mode.currentText()
         if mode == "ECB":
             self.aes_iv_input.clear()
-            self.aes_status.setText("ECB không sử dụng IV")
+            self.aes_status.setText(translate_text("ECB không sử dụng IV"))
             return
         iv_format = self.aes_iv_format.currentText()
         self.aes_iv_input.setText(generate_iv(mode, iv_format))
         if iv_format == "UTF-8":
-            self.aes_status.setText("Đã tạo IV UTF-8 tiện nhập; entropy thấp hơn HEX/Base-64. Nên dùng HEX/Base-64 cho IV ngẫu nhiên.")
+            self.aes_status.setText(translate_text("Đã tạo IV UTF-8 tiện nhập; entropy thấp hơn HEX/Base-64. Nên dùng HEX/Base-64 cho IV ngẫu nhiên."))
         else:
-            self.aes_status.setText("Đã tạo IV/nonce ngẫu nhiên bằng CSPRNG")
+            self.aes_status.setText(translate_text("Đã tạo IV/nonce ngẫu nhiên bằng CSPRNG"))
 
     def on_aes_key_bits_changed(self, _value):
         # A UTF-8 key generated by this tool uses ASCII characters, one byte each.
@@ -2308,16 +2794,16 @@ class MainWindow(QMainWindow):
         self.aes_generate_iv_btn.setEnabled(not is_ecb)
         self.aes_iv_input.clear()
         if mode == "GCM":
-            self.aes_iv_input.setPlaceholderText("GCM khuyến nghị IV 12 byte")
+            self.aes_iv_input.setPlaceholderText(translate_text("GCM khuyến nghị IV 12 byte"))
         elif mode in ("CBC", "CTR"):
-            self.aes_iv_input.setPlaceholderText("IV/counter 16 byte")
+            self.aes_iv_input.setPlaceholderText(translate_text("IV/counter 16 byte"))
         else:
-            self.aes_iv_input.setPlaceholderText("ECB không sử dụng IV")
+            self.aes_iv_input.setPlaceholderText(translate_text("ECB không sử dụng IV"))
 
     def _aes_arguments(self):
         key = self.aes_key_input.text()
         if not key:
-            raise ValueError("Vui lòng nhập hoặc tạo AES key.")
+            raise ValueError(translate_text("Vui lòng nhập hoặc tạo AES key."))
         return (
             key, self._aes_key_format_value(), self.aes_mode.currentText(),
             self.aes_iv_input.text(), self.aes_iv_format.currentText(),
@@ -2335,9 +2821,9 @@ class MainWindow(QMainWindow):
             if mode != "ECB":
                 self.aes_iv_input.setText(used_iv)
             self.aes_encode_output.setPlainText(encrypted)
-            self.aes_status.setText("Encode thành công · lưu lại key và IV/nonce để Decode")
+            self.aes_status.setText(translate_text("Encode thành công · lưu lại key và IV/nonce để Decode"))
         except Exception as exc:
-            self.aes_status.setText(f"Không thể encode: {exc}")
+            self.aes_status.setText(translate_text(f"Không thể encode: {exc}"))
 
     def decrypt_aes_ui(self):
         try:
@@ -2348,16 +2834,16 @@ class MainWindow(QMainWindow):
                 self.aes_decode_output_format.currentText(),
             )
             self.aes_decode_output.setPlainText(decrypted)
-            self.aes_status.setText("Decode thành công")
+            self.aes_status.setText(translate_text("Decode thành công"))
         except Exception as exc:
-            self.aes_status.setText(f"Không thể decode: {exc}")
+            self.aes_status.setText(translate_text(f"Không thể decode: {exc}"))
 
     @staticmethod
     def copy_tool_output(output, status):
         value = output.toPlainText()
         if value:
             QApplication.clipboard().setText(value)
-            status.setText("Đã sao chép")
+            status.setText(translate_text("Đã sao chép"))
 
     @staticmethod
     def swap_tool_text(source, output):
@@ -2583,16 +3069,16 @@ class MainWindow(QMainWindow):
         if index != 1:
             return
         path, _ = QFileDialog.getOpenFileName(
-            self, "Chọn tệp JSON", str(Path.home()), "JSON (*.json);;Tất cả tệp (*)"
+            self, translate_text("Chọn tệp JSON"), str(Path.home()), translate_text("JSON (*.json);;Tất cả tệp (*)")
         )
         if path:
             try:
                 content = Path(path).read_text(encoding="utf-8-sig")
                 target = self.json_before if side == "before" else self.json_after
                 target["editor"].setPlainText(content)
-                self.json_diff_status.setText(f"Đã nạp {Path(path).name}")
+                self.json_diff_status.setText(translate_text(f"Đã nạp {Path(path).name}"))
             except (OSError, UnicodeError) as exc:
-                QMessageBox.warning(self, "Không thể mở JSON", str(exc))
+                QMessageBox.warning(self, translate_text("Không thể mở JSON"), str(exc))
         combo.blockSignals(True)
         combo.setCurrentIndex(0)
         combo.blockSignals(False)
@@ -2601,7 +3087,7 @@ class MainWindow(QMainWindow):
         before = self.string_before["editor"].toPlainText()
         after = self.string_after["editor"].toPlainText()
         if not before and not after:
-            self.string_diff_summary.setText("Hãy nhập nội dung ở cả hai bên")
+            self.string_diff_summary.setText(translate_text("Hãy nhập nội dung ở cả hai bên"))
             return
         try:
             result = compare_text(
@@ -2613,7 +3099,7 @@ class MainWindow(QMainWindow):
                 ignore_blank_lines=self.string_ignore_blank.isChecked(),
             )
         except ValueError as exc:
-            QMessageBox.warning(self, "Không thể so sánh", str(exc))
+            QMessageBox.warning(self, translate_text("Không thể so sánh"), str(exc))
             return
 
         style = """
@@ -2631,7 +3117,7 @@ class MainWindow(QMainWindow):
             style + "<pre>" + result["after_html"] + "</pre>"
         )
         self.string_diff_summary.setText(
-            f"Thêm {result['added']} · Xóa {result['removed']} · Sửa {result['changed']}"
+            translate_text(f"Thêm {result['added']} · Xóa {result['removed']} · Sửa {result['changed']}")
         )
 
     def swap_string_compare(self):
@@ -2645,13 +3131,13 @@ class MainWindow(QMainWindow):
         self.string_after["editor"].clear()
         self.string_before_result.clear()
         self.string_after_result.clear()
-        self.string_diff_summary.setText("Đã xóa nội dung")
+        self.string_diff_summary.setText(translate_text("Đã xóa nội dung"))
 
     def run_json_diff(self):
         before = self.json_before["editor"].toPlainText()
         after = self.json_after["editor"].toPlainText()
         if not before.strip() or not after.strip():
-            self.json_diff_status.setText("Hãy nhập JSON ở cả hai bên")
+            self.json_diff_status.setText(translate_text("Hãy nhập JSON ở cả hai bên"))
             return
         try:
             result = compare_json(
@@ -2660,14 +3146,16 @@ class MainWindow(QMainWindow):
                 ignore_array_order=bool(self.json_array_mode.currentData()),
             )
         except ValueError as exc:
-            QMessageBox.warning(self, "JSON không hợp lệ", str(exc))
-            self.json_diff_status.setText("Kiểm tra JSON đầu vào")
+            QMessageBox.warning(self, translate_text("JSON không hợp lệ"), str(exc))
+            self.json_diff_status.setText(translate_text("Kiểm tra JSON đầu vào"))
             return
 
         self._json_diff_result = result
         self.json_diff_summary.setText(
-            f"{result['total']} khác biệt  ·  +{result['added']} thêm  ·  "
-            f"−{result['removed']} xóa  ·  ~{result['changed']} sửa"
+            translate_text(
+                f"{result['total']} khác biệt  ·  +{result['added']} thêm  ·  "
+                f"−{result['removed']} xóa  ·  ~{result['changed']} sửa"
+            )
         )
         self.json_diff_table.setRowCount(0)
         for diff in result["differences"]:
@@ -2695,7 +3183,7 @@ class MainWindow(QMainWindow):
         self.filter_json_diff_rows()
         self.json_copy_report_btn.setEnabled(bool(result["differences"]))
         self.json_diff_status.setText(
-            "Hai tài liệu giống nhau" if not result["differences"] else "So sánh hoàn tất"
+            translate_text("Hai tài liệu giống nhau") if not result["differences"] else translate_text("So sánh hoàn tất")
         )
 
     def filter_json_diff_rows(self):
@@ -2739,8 +3227,8 @@ class MainWindow(QMainWindow):
         self.json_after["editor"].clear()
         self.json_diff_table.setRowCount(0)
         self._json_diff_result = None
-        self.json_diff_summary.setText("Object key được so sánh không phụ thuộc thứ tự")
-        self.json_diff_status.setText("Đã xóa nội dung")
+        self.json_diff_summary.setText(translate_text("Object key được so sánh không phụ thuộc thứ tự"))
+        self.json_diff_status.setText(translate_text("Đã xóa nội dung"))
         self.json_copy_report_btn.setEnabled(False)
 
     def copy_json_diff_report(self):
@@ -2749,7 +3237,7 @@ class MainWindow(QMainWindow):
         text = format_text_diff_report(self._json_diff_result)
         if text:
             QApplication.clipboard().setText(text)
-            self.json_diff_status.setText("Đã sao chép báo cáo")
+            self.json_diff_status.setText(translate_text("Đã sao chép báo cáo"))
 
     def _show_tool_panel(self, tool: str):
         self.mode = tool
@@ -2767,9 +3255,11 @@ class MainWindow(QMainWindow):
     def on_mode_changed(self, index: int):
         if index == 4:
             self._show_tool_panel("url")
+            translate_object_tree(self)
             return
         if index == 5:
             self._show_tool_panel("aes")
+            translate_object_tree(self)
             return
 
         self.url_panel.hide()
@@ -2785,6 +3275,7 @@ class MainWindow(QMainWindow):
             self.action_panel.hide()
             self.compare_panel.hide()
             self.text_panel.show()
+            translate_object_tree(self)
             return
 
         if index == 2:
@@ -2797,6 +3288,7 @@ class MainWindow(QMainWindow):
             self.action_panel.hide()
             self.text_panel.hide()
             self.compare_panel.show()
+            translate_object_tree(self)
             return
 
         if index == 3:
@@ -2809,6 +3301,7 @@ class MainWindow(QMainWindow):
             self.text_panel.hide()
             self.compare_panel.hide()
             self.curl_panel.show()
+            translate_object_tree(self)
             return
 
         self.curl_panel.hide()
@@ -2875,6 +3368,7 @@ class MainWindow(QMainWindow):
         self.update_quality_state()
         self.progress_area.hide()
         self.refresh_queue()
+        translate_object_tree(self)
 
     def update_quality_state(self):
         enabled = self.mode == "image" and self.format_combo.currentText() != "PNG"
@@ -2914,16 +3408,18 @@ class MainWindow(QMainWindow):
             title = "Chọn tệp"
 
         files, _ = QFileDialog.getOpenFileNames(
-            self, title, str(Path.home()), file_filter
+            self, translate_text(title), self._input_start_directory(), translate_text(file_filter)
         )
         if files:
+            self._remember_last_directory("paths/last_input_directory", Path(files[0]).parent)
             self.add_paths(files)
 
     def choose_folder(self):
         folder = QFileDialog.getExistingDirectory(
-            self, "Chọn thư mục", str(Path.home())
+            self, translate_text("Chọn thư mục"), self._input_start_directory()
         )
         if folder:
+            self._remember_last_directory("paths/last_input_directory", folder)
             self.add_paths([folder])
 
     def refresh_queue(self):
@@ -2962,7 +3458,7 @@ class MainWindow(QMainWindow):
             total_size += size
 
         self.queue_summary.setText(
-            f"{len(valid_paths)} tệp  ·  {self.format_size(total_size)}"
+            translate_text(f"{len(valid_paths)} tệp  ·  {self.format_size(total_size)}")
         )
         self.queue_stack.setCurrentIndex(1 if valid_paths else 0)
         self.update_controls()
@@ -2976,6 +3472,8 @@ class MainWindow(QMainWindow):
 
     def set_busy(self, busy: bool):
         self.busy = busy
+        self.cancel_task_btn.setVisible(busy)
+        self.cancel_task_btn.setEnabled(busy)
         self.tabs.setEnabled(not busy)
         self.add_files_btn.setEnabled(not busy)
         self.add_folder_btn.setEnabled(not busy)
@@ -2986,6 +3484,40 @@ class MainWindow(QMainWindow):
         )
         self.table.setEnabled(not busy)
         self.update_controls()
+
+    def request_cancel_task(self):
+        worker = self.worker
+        if not self.busy or worker is None or not worker.isRunning():
+            return
+        self.cancel_task_btn.setEnabled(False)
+        self.progress_text.setText(translate_text("Đang yêu cầu hủy an toàn…"))
+        self.logger.info("User requested task cancellation")
+        worker.request_cancel()
+
+    def on_task_cancelled(self, completed_outputs: list[str] | None = None):
+        outputs = completed_outputs or []
+        count = len(outputs)
+        if count:
+            self.progress_text.setText(
+                translate_text(f"Đã hủy tác vụ · giữ lại {count} kết quả đã hoàn tất")
+            )
+            summary = translate_text(f"Đã hủy · giữ lại {count} kết quả đã hoàn tất")
+            notification = translate_text(f"Đã giữ lại {count} kết quả hoàn tất")
+        else:
+            self.progress_text.setText(
+                translate_text("Đã hủy tác vụ · phần kết quả đang xử lý đã được dọn")
+            )
+            summary = translate_text("Đã hủy theo yêu cầu người dùng")
+            notification = translate_text("FileForge đã dọn phần kết quả tạm")
+        self.logger.info(
+            "Task cancelled by user; completed_outputs=%d", count
+        )
+        self._record_task_history(
+            "cancelled",
+            outputs=outputs,
+            summary=summary,
+        )
+        self._notify_user(translate_text("Đã hủy tác vụ"), notification)
 
     def remove_selected(self):
         selected_paths = set()
@@ -3009,7 +3541,7 @@ class MainWindow(QMainWindow):
             return
         paths = self.current_paths()
         if not paths:
-            QMessageBox.information(self, "Chưa có tệp", "Hãy thêm tệp trước khi tiếp tục.")
+            QMessageBox.information(self, translate_text("Chưa có tệp"), translate_text("Hãy thêm tệp trước khi tiếp tục."))
             return
 
         compression = "Balanced"
@@ -3019,33 +3551,55 @@ class MainWindow(QMainWindow):
         if self.mode == "zip":
             destination, _ = QFileDialog.getSaveFileName(
                 self,
-                "Lưu tệp ZIP",
-                str(Path.home() / "FileForge.zip"),
-                ZIP_FILTER,
+                translate_text("Lưu tệp ZIP"),
+                str(Path(self._output_start_directory()) / "FileForge.zip"),
+                translate_text(ZIP_FILTER),
             )
             if not destination:
                 return
             if not destination.lower().endswith(".zip"):
                 destination += ".zip"
-            compression = COMPRESSION_OPTIONS[self.compression.currentText()]
+            compression = str(self.compression.currentData() or "Balanced")
         elif self.mode == "extract":
             destination = QFileDialog.getExistingDirectory(
-                self, "Chọn nơi giải nén", str(Path.home())
+                self, translate_text("Chọn nơi giải nén"), self._output_start_directory()
             )
             if not destination:
                 return
         else:
             destination = QFileDialog.getExistingDirectory(
-                self, "Chọn thư mục lưu ảnh", str(Path.home())
+                self, translate_text("Chọn thư mục lưu ảnh"), self._output_start_directory()
             )
             if not destination:
                 return
             output_format = self.format_combo.currentText()
 
+        output_location = Path(destination).parent if self.mode == "zip" else Path(destination)
+        self._remember_last_directory("paths/last_output_directory", output_location)
+
+        operation = {
+            "zip": "Nén ZIP",
+            "extract": "Giải nén ZIP",
+            "image": f"Chuyển ảnh sang {output_format}",
+        }.get(self.mode, self.mode)
+        self._task_context = {
+            "operation": operation,
+            "inputs": list(paths),
+            "output_folder": (
+                str(Path(destination).parent) if self.mode == "zip" else destination
+            ),
+            "started_at": time.perf_counter(),
+        }
+        self.logger.info(
+            "Task started: operation=%s inputs=%d",
+            operation,
+            len(paths),
+        )
+
         self.set_busy(True)
         self.progress_area.show()
         self.progress.setValue(0)
-        self.progress_text.setText("Đang chuẩn bị…")
+        self.progress_text.setText(translate_text("Đang chuẩn bị…"))
 
         self.worker = TaskWorker(
             self.mode,
@@ -3058,6 +3612,7 @@ class MainWindow(QMainWindow):
         self.worker.progress.connect(self.on_progress)
         self.worker.completed.connect(self.on_completed)
         self.worker.failed.connect(self.on_failure)
+        self.worker.cancelled.connect(self.on_task_cancelled)
         self.worker.finished.connect(lambda: self.set_busy(False))
         self.worker.start()
 
@@ -3070,18 +3625,20 @@ class MainWindow(QMainWindow):
             prefix = "Đang giải nén"
         else:
             prefix = "Đang chuyển đổi"
-        self.progress_text.setText(f"{prefix}: {name}")
+        self.progress_text.setText(translate_text(f"{prefix}: {name}"))
 
     def show_result(self, title: str, message: str, folder: str, details: str = ""):
+        if not self.isVisible() or self.isMinimized():
+            return
         dialog = QMessageBox(self)
-        dialog.setWindowTitle(title)
-        dialog.setText(message)
+        dialog.setWindowTitle(translate_text(title))
+        dialog.setText(translate_text(message))
         if details:
             dialog.setDetailedText(details)
         open_folder_btn = dialog.addButton(
-            "Mở thư mục", QMessageBox.ButtonRole.ActionRole
+            translate_text("Mở thư mục"), QMessageBox.ButtonRole.ActionRole
         )
-        dialog.addButton("Đóng", QMessageBox.ButtonRole.AcceptRole)
+        dialog.addButton(translate_text("Đóng"), QMessageBox.ButtonRole.AcceptRole)
         dialog.exec()
         if dialog.clickedButton() == open_folder_btn:
             QDesktopServices.openUrl(QUrl.fromLocalFile(folder))
@@ -3092,7 +3649,13 @@ class MainWindow(QMainWindow):
 
         if mode == "zip":
             path = Path(result["path"])
-            self.progress_text.setText("Đã tạo tệp ZIP")
+            self.progress_text.setText(translate_text("Đã tạo tệp ZIP"))
+            self._record_task_history(
+                "success",
+                outputs=[str(path)],
+                summary=f"Đã tạo {path.name}",
+            )
+            self._notify_user("Hoàn tất", f"Đã tạo {path.name}")
             self.show_result(
                 "Hoàn tất",
                 "Tệp ZIP đã được tạo thành công.",
@@ -3101,48 +3664,81 @@ class MainWindow(QMainWindow):
             )
             return
 
-        outputs = result["outputs"]
+        outputs = [str(path) for path in result["outputs"]]
         errors = result["errors"]
         output_count = len(outputs)
         error_count = len(errors)
+        status = (
+            "success" if error_count == 0
+            else "partial" if output_count
+            else "failed"
+        )
+        context = self._task_context or {}
+        folder = context.get("output_folder", str(Path.home()))
 
         if mode == "extract":
-            self.progress_text.setText("Đã hoàn tất giải nén")
+            self.progress_text.setText(translate_text("Đã hoàn tất giải nén"))
             title = "Hoàn tất giải nén"
             message = f"Đã giải nén thành công {output_count} tệp ZIP."
-            folder = str(Path(outputs[0]).parent) if outputs else str(Path.home())
         else:
-            self.progress_text.setText("Đã hoàn tất chuyển đổi")
+            self.progress_text.setText(translate_text("Đã hoàn tất chuyển đổi"))
             title = "Hoàn tất chuyển đổi"
             message = f"Đã chuyển đổi thành công {output_count} ảnh."
-            folder = str(Path(outputs[0]).parent) if outputs else str(Path.home())
 
         details = ""
         if error_count:
             details = "\n".join(
-                f"{Path(path).name}: {message}"
-                for path, message in errors[:10]
+                f"{Path(path).name}: {error}"
+                for path, error in errors[:10]
             )
             if error_count > 10:
                 details += f"\n… và {error_count - 10} lỗi khác."
+
+        summary = (
+            f"Hoàn tất {output_count} mục"
+            if status == "success"
+            else f"Hoàn tất {output_count}/{output_count + error_count} mục"
+        )
+        self._record_task_history(
+            status,
+            outputs=outputs,
+            summary=summary,
+            error_message=details,
+        )
+
         if not output_count:
-            QMessageBox.warning(
-                self,
-                "Không có tệp được xử lý",
-                "Không có tệp nào được xử lý thành công.",
-            )
-            if details:
-                QMessageBox.information(self, "Chi tiết lỗi", details)
+            self._notify_user("Tác vụ thất bại", f"{error_count} mục không xử lý được")
+            if self.isVisible() and not self.isMinimized():
+                QMessageBox.warning(
+                    self,
+                    translate_text("Không có tệp được xử lý"),
+                    translate_text(
+                        "Không có tệp nào được xử lý thành công. Xem lịch sử tác vụ để biết chi tiết."
+                    ),
+                )
+                if details:
+                    QMessageBox.information(self, translate_text("Chi tiết lỗi"), details)
             return
+
+        message = translate_text(message)
         if error_count:
-            message += f"\nBỏ qua {error_count} tệp bị lỗi."
+            message += translate_text(f"\nBỏ qua {error_count} tệp bị lỗi.")
+        self._notify_user(title, summary)
         self.show_result(title, message, folder, details)
 
     def on_failure(self, message: str):
-        self.progress_text.setText("Tác vụ không thành công")
-        QMessageBox.critical(
-            self, "Có lỗi xảy ra", f"Không thể hoàn thành tác vụ.\n\n{message}"
+        self.progress_text.setText(translate_text("Tác vụ không thành công"))
+        self.logger.error("Task failed: %s", message)
+        self._record_task_history(
+            "failed",
+            summary="Tác vụ không thành công",
+            error_message=message,
         )
+        self._notify_user("Tác vụ thất bại", message[:180])
+        if self.isVisible() and not self.isMinimized():
+            QMessageBox.critical(
+                self, translate_text("Có lỗi xảy ra"), translate_text(f"Không thể hoàn thành tác vụ.\n\n{message}")
+            )
 
 
 class SplashScreen(QWidget):
@@ -3356,8 +3952,16 @@ class SplashScreen(QWidget):
 def main():
     _set_windows_app_id()
     app = QApplication(sys.argv)
+    app.setOrganizationName("JohanForce")
+    app.setOrganizationDomain("github.com/johanforce")
     app.setApplicationName(APP_NAME)
     app.setApplicationDisplayName(APP_NAME)
+    app.setApplicationVersion(APP_VERSION)
+    startup_settings = QSettings("JohanForce", APP_NAME)
+    set_language(str(startup_settings.value("preferences/language", "vi") or "vi"))
+    app_logger = configure_app_logging()
+    install_exception_logging(app_logger)
+    app_logger.info("FileForge starting")
     app.setStyle("Fusion")
     app.setStyleSheet(STYLE)
     app.setFont(QFont("SF Pro Display", 10))
@@ -3365,26 +3969,26 @@ def main():
 
     splash = SplashScreen()
     splash.show_animated()
-    splash.set_progress(14, "Đang khởi động…")
+    splash.set_progress(14, translate_text("Đang khởi động…"))
     launch: dict = {}
 
     def build_window():
-        splash.set_progress(46, "Đang dựng giao diện…")
+        splash.set_progress(46, translate_text("Đang dựng giao diện…"))
         app.processEvents()
         try:
             launch["window"] = MainWindow()
         except Exception:
             splash.close()
             QMessageBox.critical(
-                None, "Không thể khởi động FileForge", traceback.format_exc()
+                None, translate_text("Không thể khởi động FileForge"), traceback.format_exc()
             )
             app.quit()
             return
-        splash.set_progress(88, "Gần xong…")
+        splash.set_progress(88, translate_text("Gần xong…"))
         QTimer.singleShot(max(0, SPLASH_MIN_MS - splash.elapsed_ms()), finish_splash)
 
     def finish_splash():
-        splash.set_progress(100, "Sẵn sàng")
+        splash.set_progress(100, translate_text("Sẵn sàng"))
         QTimer.singleShot(420, reveal_window)
 
     def reveal_window():

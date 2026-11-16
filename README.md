@@ -2,6 +2,10 @@
 
 Ứng dụng desktop gọn nhẹ để gom tệp, nén/giải nén ZIP, chuyển đổi ảnh và xử lý JSON/XML. Xây dựng bằng Python và PySide6.
 
+> **Phiên bản: 1.0.0** · Giao diện hỗ trợ **Tiếng Việt** và **English**. Mở **FileForge → Tùy chọn → Ngôn ngữ** để thay đổi; lựa chọn được lưu cho lần mở sau.
+>
+> [Read this guide in English](README.en.md) · [MIT License](LICENSE) · [Acknowledgments](ACKNOWLEDGMENTS.md)
+
 ## Tính năng
 
 ### Nén ZIP
@@ -59,7 +63,19 @@
 - Mỗi ô JSON có dropdown chọn dán nội dung hoặc mở tệp `.json`; lỗi parse nêu dòng và cột.
 - So sánh chạy hoàn toàn offline trong ứng dụng, không tải dữ liệu lên máy chủ.
 
-### Hiển thị cấu trúc và hiệu năng
+### Trải nghiệm ứng dụng desktop
+
+- Menu **FileForge** cung cấp Tùy chọn, Lịch sử tác vụ, mở thư mục cấu hình, mở thư mục nhật ký và Thoát.
+- Tùy chọn có thể ghi nhớ cửa sổ/tab gần nhất, thư mục đầu vào/đầu ra, thư mục đầu ra ưu tiên và các thiết lập xử lý ảnh/ZIP.
+- Lịch sử tác vụ SQLite lưu tối đa 500 tác vụ gần nhất (nén/giải nén ZIP, chuyển ảnh và xử lý JSON/XML), cho phép tìm kiếm, xem trạng thái, thời lượng và mở thư mục kết quả.
+- Lịch sử chỉ lưu tên tệp hoặc nhãn mục đầu vào, số ký tự xử lý và đường dẫn đầu ra; không lưu nội dung tệp, nội dung editor hoặc khóa AES/plaintext/ciphertext. Người dùng có thể xóa toàn bộ lịch sử trong cửa sổ Lịch sử tác vụ.
+- Nhật ký chẩn đoán được xoay vòng tại thư mục dữ liệu ứng dụng: tối đa khoảng 2 MB mỗi tệp, giữ 3 bản sao cũ. Mở nhanh từ **FileForge → Mở thư mục nhật ký**.
+- Khi hệ điều hành cung cấp system tray, FileForge có biểu tượng khay với các lệnh mở ứng dụng, mở lịch sử và thoát. Có thể bật thu nhỏ xuống khay cùng thông báo trong Tùy chọn.
+- Khi tác vụ nền đang chạy, FileForge ngăn thoát ứng dụng để tránh đóng QThread chưa hoàn tất.
+- Tác vụ nén ZIP, giải nén và chuyển ảnh có nút **Hủy tác vụ**. Cơ chế hủy hợp tác không dùng `QThread.terminate()`; ZIP dùng tệp tạm và chỉ thay thế đầu ra khi hoàn tất, giải nén dọn thư mục tạm của archive đang xử lý, chuyển ảnh chỉ công bố ảnh sau khi ghi xong.
+- Khi hủy một batch, các mục đã hoàn tất được giữ lại và ghi vào lịch sử với trạng thái **Đã hủy**; mục đang xử lý được dọn phần tạm. Việc dừng một ảnh đang được Pillow giải mã/ghi hoặc một thao tác hệ thống đang chạy có thể chờ đến điểm kiểm tra hủy kế tiếp.
+
+## Hiển thị cấu trúc và hiệu năng
 - Hai vùng đầu vào/đầu ra, có thể chuyển giữa văn bản và cây JSON.
 - Object và array có thể bung/thu theo từng cấp.
 - Cây JSON nạp con theo yêu cầu, hiển thị 300 mục mỗi trang và có thể nạp tiếp; không bỏ mất field trong JSON lớn.
@@ -166,3 +182,11 @@ Nếu workflow `Auto Pull Request to main` báo lỗi `GitHub Actions is not per
 4. Vào **Actions → Auto Pull Request to main**, chọn lần chạy bị lỗi và bấm **Re-run jobs**.
 
 Workflow chỉ tạo PR từ `feature/encode` vào `main`; nếu đã có PR đang mở thì không tạo trùng.
+
+
+## Phiên bản, ngôn ngữ và giấy phép
+
+- Phiên bản ứng dụng: **1.0.0** (được khai báo tập trung trong `fileforge/__init__.py` và hiển thị trong cửa sổ/About).
+- Ngôn ngữ giao diện hiện có: Tiếng Việt và English; ngôn ngữ được lưu trong Tùy chọn.
+- Mã nguồn FileForge được phát hành theo MIT License; giấy phép và thông báo của thư viện bên thứ ba được liệt kê riêng trong [ACKNOWLEDGMENTS.md](ACKNOWLEDGMENTS.md).
+- Xem [README tiếng Anh](README.en.md) để đọc hướng dẫn bằng English.

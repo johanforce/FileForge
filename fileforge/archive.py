@@ -8,6 +8,8 @@ import os
 import tempfile
 import zipfile
 
+from fileforge.task_control import raise_if_cancelled
+
 
 @dataclass(frozen=True)
 class ArchiveItem:
@@ -105,8 +107,10 @@ def create_zip(
     destination: str | Path,
     compression: str = "Balanced",
     progress: Callable[[int, int, str], None] | None = None,
+    is_cancelled: Callable[[], bool] | None = None,
 ) -> Path:
-    """Create an archive atomically; an existing destination survives failures."""
+    """Create an archive atomically; cancellation preserves any previous output."""
+    raise_if_cancelled(is_cancelled)
     if compression not in PRESETS:
         raise ValueError(f"Unknown compression preset: {compression}")
     method, level = PRESETS[compression]
@@ -137,23 +141,47 @@ def create_zip(
             strict_timestamps=False,  # files dated before 1980 no longer abort the job
         ) as archive:
             for item in items:
+                raise_if_cancelled(is_cancelled)
                 if item.is_dir:
                     archive.write(item.path, arcname=item.archive_name)
                 else:
                     store_only = item.path.suffix.lower() in STORE_ONLY_EXTENSIONS
-                    archive.write(
-                        item.path,
-                        arcname=item.archive_name,
-                        compress_type=zipfile.ZIP_STORED if store_only else None,
+                    info = zipfile.ZipInfo.from_file(item.path, arcname=item.archive_name)
+                    info.compress_type = (
+                        zipfile.ZIP_STORED if store_only else method
                     )
-                completed += item.size
-                if progress:
-                    progress(completed, total, item.archive_name)
+                    with item.path.open("rb") as source, archive.open(
+                        info,
+                        "w",
+                        force_zip64=item.size > zipfile.ZIP64_LIMIT,
+                    ) as destination_stream:
+                        while True:
+                            raise_if_cancelled(is_cancelled)
+                            chunk = source.read(1024 * 1024)
+                            if not chunk:
+                                break
+                            destination_stream.write(chunk)
+                            completed += len(chunk)
+                            if progress:
+                                progress(completed, total, item.archive_name)
+                if item.is_dir:
+                    completed += item.size
+                    if progress:
+                        progress(completed, total, item.archive_name)
         # Validate before replacing a possibly existing output.
+        raise_if_cancelled(is_cancelled)
         with zipfile.ZipFile(temp_path, "r") as archive:
-            bad_member = archive.testzip()
-            if bad_member is not None:
-                raise zipfile.BadZipFile(f"Archive validation failed: {bad_member}")
+            for member in archive.infolist():
+                raise_if_cancelled(is_cancelled)
+                if member.is_dir():
+                    continue
+                with archive.open(member, "r") as member_stream:
+                    while True:
+                        raise_if_cancelled(is_cancelled)
+                        chunk = member_stream.read(1024 * 1024)
+                        if not chunk:
+                            break
+        raise_if_cancelled(is_cancelled)
         try:
             os.chmod(temp_path, 0o644)  # mkstemp creates 0600
         except OSError:

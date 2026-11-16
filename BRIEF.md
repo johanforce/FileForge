@@ -1,12 +1,12 @@
-# FileForge — Product Brief
+# FileForge 1.0.0 — Product Brief
 
-## 1. Mục tiêu sản phẩm
+**Phiên bản hiện tại: 1.0.0** · **Ngôn ngữ giao diện:** Tiếng Việt và English.\n\n## 1. Mục tiêu sản phẩm
 
 FileForge là ứng dụng desktop chạy cục bộ trên macOS, Windows và Linux. Mục tiêu là gom các thao tác xử lý tệp thường dùng vào một giao diện gọn, trực quan, ưu tiên hành động thay vì nội dung mô tả dài.
 
 ## 2. Nguyên tắc UX
 
-- Giao diện tiếng Việt, dark theme, ưu tiên vùng thao tác chính.
+- Giao diện hỗ trợ Tiếng Việt và English, dark theme, ưu tiên vùng thao tác chính. Ngôn ngữ được chọn trong Tùy chọn và lưu giữa các phiên.
 - Hạn chế text view và các bảng thống kê không cần thiết.
 - Các tác vụ chạy nền khi có thể; giao diện không bị khóa trong lúc xử lý.
 - Có phản hồi tiến trình, lỗi rõ ràng và đường dẫn kết quả.
@@ -78,7 +78,21 @@ Trình xem JSON:
 - Tác vụ ghi file ưu tiên ghi ra file tạm rồi thay thế/commit kết quả khi hoàn tất.
 - Giải nén kiểm tra đường dẫn từng member trước khi ghi ra đĩa.
 
-## 6. Trạng thái triển khai
+## 6. Trải nghiệm desktop và dữ liệu ứng dụng
+
+- Tùy chọn người dùng được lưu bằng QSettings: khôi phục cửa sổ/tab, thư mục gần nhất, thư mục đầu ra ưu tiên và tùy chọn nén/chuyển ảnh.
+- Lịch sử tác vụ lưu cục bộ bằng SQLite cho ZIP, giải nén, chuyển ảnh và xử lý JSON/XML; hỗ trợ tìm kiếm, xem chi tiết, mở thư mục kết quả và xóa lịch sử; giới hạn mặc định 500 bản ghi gần nhất.
+- Lịch sử chỉ ghi metadata như tên tệp/nhãn đầu vào, số ký tự xử lý, đường dẫn đầu ra, trạng thái và thời lượng. Không lưu nội dung tệp, nội dung editor, khóa AES hay plaintext/ciphertext.
+- Nhật ký chẩn đoán dùng RotatingFileHandler, mỗi log tối đa khoảng 2 MB và giữ tối đa 3 bản sao cũ.
+- Menu FileForge cho phép mở lịch sử, thư mục cấu hình và thư mục log.
+- System tray và thông báo hoàn tất được bật khi môi trường desktop hỗ trợ; người dùng có thể chọn thu nhỏ xuống khay khi đóng cửa sổ.
+- Tác vụ ZIP, giải nén và chuyển ảnh hỗ trợ hủy hợp tác qua Event; không ép kết thúc QThread.
+- ZIP chỉ thay thế đích sau khi ghi/kiểm tra xong; hủy sẽ xóa tệp tạm và giữ nguyên đầu ra cũ. Giải nén dọn thư mục tạm của archive đang xử lý; ảnh chỉ được publish sau khi ghi xong.
+- Nếu batch đã tạo một số kết quả hoàn chỉnh trước khi hủy, các kết quả đó được giữ lại và ghi trong lịch sử với trạng thái `cancelled`.
+- Hủy được quan sát giữa các khối dữ liệu ZIP/giải nén và giữa các bước ảnh; một lệnh Pillow đang decode/encode có thể chỉ dừng tại điểm kiểm tra kế tiếp.
+- Khi có tác vụ nền đang chạy, yêu cầu thoát ứng dụng được từ chối để tránh hủy QThread đang hoạt động.
+
+## 7. Trạng thái triển khai
 
 - Nén ZIP: đã có.
 - Giải nén ZIP: đã có.
@@ -87,7 +101,7 @@ Trình xem JSON:
 - JSON → Model: đã triển khai, hỗ trợ dataclass, Pydantic v2 và TypeScript.
 - Đóng gói .app/.dmg cho macOS: chưa triển khai.
 
-## 7. Ngoài phạm vi hiện tại
+## 8. Giấy phép và ghi nhận\n\n- Mã nguồn FileForge được phát hành theo MIT License (`LICENSE`).\n- Giấy phép và thông báo của các dependency được ghi trong `ACKNOWLEDGMENTS.md`; chúng không bị thay thế bởi giấy phép MIT của ứng dụng.\n- Hướng dẫn English: `README.en.md`.\n\n## 9. Ngoài phạm vi hiện tại
 
 - Convert PDF/Word/Excel.
 - Đồng bộ cloud hoặc upload file.
