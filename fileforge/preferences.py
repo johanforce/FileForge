@@ -23,7 +23,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from fileforge.i18n import LANGUAGE_NAMES, SUPPORTED_LANGUAGES, translate_object_tree
+from fileforge.i18n import LANGUAGE_NAMES, SUPPORTED_LANGUAGES, translate_object_tree, translate_text
 
 
 class PreferencesDialog(QDialog):
@@ -156,7 +156,7 @@ class PreferencesDialog(QDialog):
         current = self.output_directory.text().strip()
         start = current if current and Path(current).is_dir() else str(Path.home())
         selected = QFileDialog.getExistingDirectory(
-            self, "Chọn thư mục đầu ra ưu tiên", start
+            self, translate_text("Chọn thư mục đầu ra ưu tiên"), start
         )
         if selected:
             self.output_directory.setText(selected)
@@ -169,8 +169,8 @@ class PreferencesDialog(QDialog):
         if not self.is_output_directory_valid():
             QMessageBox.warning(
                 self,
-                "Thư mục không hợp lệ",
-                "Thư mục đầu ra đã chọn không tồn tại hoặc không thể truy cập.",
+                translate_text("Thư mục không hợp lệ"),
+                translate_text("Thư mục đầu ra đã chọn không tồn tại hoặc không thể truy cập."),
             )
             self.output_directory.setFocus()
             return
