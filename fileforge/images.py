@@ -120,9 +120,10 @@ def convert_images(
                     outputs.append(output_path)
                 finally:
                     temporary_path.unlink(missing_ok=True)
-                if converted is not image:
-                    converted.close()
-        except TaskCancelledError:
+                    if converted is not image:
+                        converted.close()
+        except TaskCancelledError as exc:
+            exc.completed_outputs = [str(output) for output in outputs]
             raise
         except Exception as exc:
             errors.append((str(source), str(exc)))
@@ -130,5 +131,4 @@ def convert_images(
             if progress:
                 progress(index, len(paths), source.name)
 
-    raise_if_cancelled(is_cancelled)
     return outputs, errors
