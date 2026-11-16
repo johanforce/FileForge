@@ -53,6 +53,7 @@ from PySide6.QtWidgets import (
     QApplication,
     QAbstractItemView,
     QDialog,
+    QDialogButtonBox,
     QMenu,
     QSystemTrayIcon,
     QComboBox,
@@ -1236,7 +1237,7 @@ class MainWindow(QMainWindow):
         translate_object_tree(self)
 
     def _build_menu_bar(self):
-        app_menu = self.menuBar().addMenu("FileForge")
+        app_menu = self.menuBar().addMenu(translate_text("Tệp"))
 
         preferences_action = QAction("Tùy chọn…", self)
         preferences_action.setShortcut(QKeySequence("Ctrl+,"))
@@ -1262,10 +1263,60 @@ class MainWindow(QMainWindow):
         quit_action.triggered.connect(self.quit_application)
         app_menu.addAction(quit_action)
 
-        help_menu = self.menuBar().addMenu("Trợ giúp")
+        help_menu = self.menuBar().addMenu(translate_text("Trợ giúp"))
         about_action = QAction("Giới thiệu FileForge", self)
         about_action.triggered.connect(self.show_about)
         help_menu.addAction(about_action)
+
+        help_menu.addSeparator()
+        acknowledgments_action = QAction("Lời cảm ơn", self)
+        acknowledgments_action.triggered.connect(self.show_acknowledgments)
+        help_menu.addAction(acknowledgments_action)
+
+        license_action = QAction("Giấy phép", self)
+        license_action.triggered.connect(self.show_license)
+        help_menu.addAction(license_action)
+
+    def _show_document_dialog(self, title: str, filename: str) -> None:
+        document_path = Path(__file__).resolve().parent.parent / filename
+        try:
+            document_text = document_path.read_text(encoding="utf-8")
+        except OSError as exc:
+            QMessageBox.warning(self, title, str(exc))
+            return
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle(title)
+        dialog.setMinimumSize(680, 480)
+        dialog.resize(780, 580)
+
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(24, 22, 24, 20)
+        layout.setSpacing(14)
+
+        heading = QLabel(title)
+        heading.setObjectName("Section")
+        layout.addWidget(heading)
+
+        content = QPlainTextEdit(dialog)
+        content.setReadOnly(True)
+        content.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth)
+        content.setPlainText(document_text)
+        layout.addWidget(content, 1)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close, parent=dialog)
+        close_button = buttons.button(QDialogButtonBox.StandardButton.Close)
+        if close_button is not None:
+            close_button.setText(translate_text("Đóng"))
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+        dialog.exec()
+
+    def show_acknowledgments(self) -> None:
+        self._show_document_dialog(translate_text("Lời cảm ơn"), "ACKNOWLEDGMENTS.md")
+
+    def show_license(self) -> None:
+        self._show_document_dialog(translate_text("Giấy phép"), "LICENSE")
 
     def open_task_history(self):
         dialog = TaskHistoryDialog(self.history_store, self)
@@ -1430,17 +1481,48 @@ class MainWindow(QMainWindow):
             )
 
     def show_about(self):
-        version_label = "Version" if get_language() == "en" else "Phiên bản"
-        license_label = "MIT License" if get_language() == "en" else "Giấy phép MIT"
-        QMessageBox.about(
-            self,
-            translate_text("Giới thiệu FileForge"),
-            "<h3>FileForge</h3>"
-            f"<p><b>{version_label} {APP_VERSION}</b></p>"
-            + translate_text("<p>Công cụ desktop hỗ trợ xử lý tệp, dữ liệu văn bản và mã hóa.</p>")
-            + translate_text("<p>File được xử lý trực tiếp trên máy tính của bạn.</p>")
-            + f"<p>{license_label}</p>",
+        dialog = QDialog(self)
+        dialog.setWindowTitle(translate_text("Giới thiệu FileForge"))
+        dialog.setFixedWidth(460)
+
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(28, 26, 28, 22)
+        layout.setSpacing(16)
+
+        app_title = QLabel("FileForge")
+        app_title.setObjectName("Section")
+        app_title.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        layout.addWidget(app_title)
+
+        version = QLabel(f"{translate_text('Phiên bản')} {APP_VERSION}")
+        version.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        layout.addWidget(version)
+
+        description = QLabel(
+            translate_text("Công cụ desktop hỗ trợ xử lý tệp, dữ liệu văn bản và mã hóa.")
         )
+        description.setWordWrap(True)
+        description.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        layout.addWidget(description)
+
+        privacy = QLabel(
+            translate_text("File được xử lý trực tiếp trên máy tính của bạn.")
+        )
+        privacy.setWordWrap(True)
+        privacy.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        layout.addWidget(privacy)
+
+        license_info = QLabel(translate_text("Phát hành theo giấy phép MIT"))
+        license_info.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        layout.addWidget(license_info)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close, parent=dialog)
+        close_button = buttons.button(QDialogButtonBox.StandardButton.Close)
+        if close_button is not None:
+            close_button.setText(translate_text("Đóng"))
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+        dialog.exec()
 
     def _remember_last_directory(self, key: str, path: str | Path):
         if self.settings.value(
