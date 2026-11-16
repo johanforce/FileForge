@@ -137,8 +137,8 @@ def extract_archives(
     outputs: list[Path] = []
     completed_before = 0
     for path, archive_size in valid_archives:
-        raise_if_cancelled(is_cancelled)
         try:
+            raise_if_cancelled(is_cancelled)
             extracted, actual_size = _extract_one(
                 path, target, progress, completed_before, total_size, is_cancelled
             )
