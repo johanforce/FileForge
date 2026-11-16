@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import difflib
 import html
 import re
@@ -83,6 +84,9 @@ from fileforge.images import SUPPORTED_IMAGE_EXTENSIONS, convert_images
 from fileforge.text_utils import process_text
 from fileforge.compare import compare_text, compare_json, format_text_diff_report
 from fileforge.curl_utils import parse_http_request
+from fileforge.crypto_utils import (
+    aes_decrypt, aes_encrypt, generate_aes_key, generate_iv, url_decode, url_encode,
+)
 
 
 # --------------------------------------------------------------------------
@@ -919,6 +923,8 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(QWidget(), "JSON / XML")
         self.tabs.addTab(QWidget(), "So sánh")
         self.tabs.addTab(QWidget(), "String → cURL")
+        self.tabs.addTab(QWidget(), "URL Encoder / Decoder")
+        self.tabs.addTab(QWidget(), "AES Encrypt / Decrypt")
         self.tabs.currentChanged.connect(self.on_mode_changed)
         outer.addWidget(self.tabs)
 
@@ -1071,6 +1077,14 @@ class MainWindow(QMainWindow):
         self.curl_panel = self.build_curl_panel()
         outer.addWidget(self.curl_panel, 1)
         self.curl_panel.hide()
+
+        self.url_panel = self.build_url_panel()
+        outer.addWidget(self.url_panel, 1)
+        self.url_panel.hide()
+
+        self.aes_panel = self.build_aes_panel()
+        outer.addWidget(self.aes_panel, 1)
+        self.aes_panel.hide()
 
         self.on_mode_changed(0)
         self.refresh_queue()
@@ -1907,6 +1921,277 @@ class MainWindow(QMainWindow):
             QApplication.clipboard().setText(value)
             self.curl_status.setText("Đã sao chép lệnh cURL")
 
+    def build_url_panel(self):
+        panel = QFrame()
+        panel.setObjectName("Panel")
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(16, 14, 16, 14)
+        layout.setSpacing(10)
+
+        title = QLabel("URL Encoder / Decoder")
+        title.setObjectName("Brand")
+        subtitle = QLabel("Mã hóa và giải mã URL theo UTF-8 · xử lý hoàn toàn trên thiết bị")
+        subtitle.setObjectName("Muted")
+        layout.addWidget(title)
+        layout.addWidget(subtitle)
+
+        options = QHBoxLayout()
+        self.url_component_mode = QCheckBox("Encode URI Component")
+        self.url_component_mode.setChecked(True)
+        options.addWidget(self.url_component_mode)
+        options.addStretch()
+        layout.addLayout(options)
+
+        editors = QSplitter(Qt.Orientation.Horizontal)
+        source_col = QWidget()
+        source_layout = QVBoxLayout(source_col)
+        source_layout.setContentsMargins(0, 0, 0, 0)
+        source_label = QLabel("INPUT")
+        source_label.setObjectName("Section")
+        source_layout.addWidget(source_label)
+        self.url_input = QPlainTextEdit()
+        self.url_input.setObjectName("CodeEditor")
+        self.url_input.setPlaceholderText("Nhập URL hoặc chuỗi cần chuyển đổi…")
+        source_layout.addWidget(self.url_input, 1)
+
+        output_col = QWidget()
+        output_layout = QVBoxLayout(output_col)
+        output_layout.setContentsMargins(0, 0, 0, 0)
+        output_label = QLabel("OUTPUT")
+        output_label.setObjectName("Section")
+        output_layout.addWidget(output_label)
+        self.url_output = QPlainTextEdit()
+        self.url_output.setObjectName("CodeEditor")
+        self.url_output.setReadOnly(True)
+        self.url_output.setPlaceholderText("Kết quả sẽ xuất hiện ở đây…")
+        output_layout.addWidget(self.url_output, 1)
+        editors.addWidget(source_col)
+        editors.addWidget(output_col)
+        layout.addWidget(editors, 1)
+
+        actions = QHBoxLayout()
+        self.url_status = QLabel("Sẵn sàng")
+        self.url_status.setObjectName("Muted")
+        actions.addWidget(self.url_status)
+        actions.addStretch()
+        encode_btn = QPushButton("Encode  →")
+        encode_btn.setObjectName("Primary")
+        encode_btn.clicked.connect(self.encode_url)
+        decode_btn = QPushButton("←  Decode")
+        decode_btn.clicked.connect(self.decode_url)
+        copy_btn = QPushButton("Copy")
+        copy_btn.clicked.connect(lambda: self.copy_tool_output(self.url_output, self.url_status))
+        swap_btn = QPushButton("⇄ Đổi bên")
+        swap_btn.clicked.connect(lambda: self.swap_tool_text(self.url_input, self.url_output))
+        clear_btn = QPushButton("Xóa")
+        clear_btn.clicked.connect(lambda: self.clear_tool_text(self.url_input, self.url_output, self.url_status))
+        for button in (encode_btn, decode_btn, copy_btn, swap_btn, clear_btn):
+            actions.addWidget(button)
+        layout.addLayout(actions)
+        return panel
+
+    def encode_url(self):
+        try:
+            result = url_encode(self.url_input.toPlainText(), self.url_component_mode.isChecked())
+            self.url_output.setPlainText(result)
+            self.url_status.setText("Đã encode URL")
+        except (ValueError, UnicodeError) as exc:
+            self.url_status.setText(f"Lỗi: {exc}")
+
+    def decode_url(self):
+        try:
+            result = url_decode(self.url_input.toPlainText())
+            self.url_output.setPlainText(result)
+            self.url_status.setText("Đã decode URL")
+        except (ValueError, UnicodeError) as exc:
+            self.url_status.setText(f"Lỗi: {exc}")
+
+    def build_aes_panel(self):
+        panel = QFrame()
+        panel.setObjectName("Panel")
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(16, 14, 16, 14)
+        layout.setSpacing(9)
+
+        title = QLabel("AES Encryption / Decryption")
+        title.setObjectName("Brand")
+        subtitle = QLabel("Mã hóa cục bộ bằng AES-GCM (khuyến nghị) hoặc AES-CBC")
+        subtitle.setObjectName("Muted")
+        layout.addWidget(title)
+        layout.addWidget(subtitle)
+
+        settings = QHBoxLayout()
+        self.aes_mode = StyledComboBox()
+        self.aes_mode.addItems(["GCM", "CBC"])
+        self.aes_mode.setMinimumWidth(105)
+        self.aes_key_bits = StyledComboBox()
+        self.aes_key_bits.addItems(["128", "192", "256"])
+        self.aes_key_bits.setCurrentText("256")
+        self.aes_key_format = StyledComboBox()
+        self.aes_key_format.addItems(["Base64", "Hex", "Plain Text"])
+        self.aes_output_format = StyledComboBox()
+        self.aes_output_format.addItems(["Base64", "Hex"])
+        for label, widget in (
+            ("Mode", self.aes_mode), ("Key size", self.aes_key_bits),
+            ("Key format", self.aes_key_format), ("Output", self.aes_output_format),
+        ):
+            settings.addWidget(QLabel(label))
+            settings.addWidget(widget)
+        settings.addStretch()
+        layout.addLayout(settings)
+
+        key_row = QHBoxLayout()
+        key_row.addWidget(QLabel("KEY"))
+        self.aes_key_input = QLineEdit()
+        self.aes_key_input.setEchoMode(QLineEdit.EchoMode.Password)
+        self.aes_key_input.setPlaceholderText("Nhập key hoặc tạo key ngẫu nhiên…")
+        key_row.addWidget(self.aes_key_input, 1)
+        self.aes_show_key = QCheckBox("Hiện")
+        self.aes_show_key.toggled.connect(
+            lambda visible: self.aes_key_input.setEchoMode(
+                QLineEdit.EchoMode.Normal if visible else QLineEdit.EchoMode.Password
+            )
+        )
+        key_row.addWidget(self.aes_show_key)
+        gen_key = QPushButton("Tạo key")
+        gen_key.clicked.connect(self.generate_aes_key_ui)
+        key_row.addWidget(gen_key)
+        layout.addLayout(key_row)
+
+        iv_row = QHBoxLayout()
+        iv_row.addWidget(QLabel("IV / NONCE (HEX)"))
+        self.aes_iv_input = QLineEdit()
+        self.aes_iv_input.setPlaceholderText("Tự tạo khi Encrypt; nhập lại IV này để Decrypt")
+        iv_row.addWidget(self.aes_iv_input, 1)
+        gen_iv = QPushButton("Tạo IV")
+        gen_iv.clicked.connect(self.generate_aes_iv_ui)
+        iv_row.addWidget(gen_iv)
+        layout.addLayout(iv_row)
+
+        editors = QSplitter(Qt.Orientation.Horizontal)
+        left = QWidget()
+        left_layout = QVBoxLayout(left)
+        left_layout.setContentsMargins(0, 0, 0, 0)
+        left_label = QLabel("PLAINTEXT / CIPHERTEXT INPUT")
+        left_label.setObjectName("Section")
+        left_layout.addWidget(left_label)
+        self.aes_input = QPlainTextEdit()
+        self.aes_input.setObjectName("CodeEditor")
+        self.aes_input.setPlaceholderText("Nhập văn bản cần mã hóa hoặc ciphertext cần giải mã…")
+        left_layout.addWidget(self.aes_input, 1)
+        right = QWidget()
+        right_layout = QVBoxLayout(right)
+        right_layout.setContentsMargins(0, 0, 0, 0)
+        right_label = QLabel("RESULT")
+        right_label.setObjectName("Section")
+        right_layout.addWidget(right_label)
+        self.aes_output = QPlainTextEdit()
+        self.aes_output.setObjectName("CodeEditor")
+        self.aes_output.setReadOnly(True)
+        self.aes_output.setPlaceholderText("Kết quả sẽ xuất hiện ở đây…")
+        right_layout.addWidget(self.aes_output, 1)
+        editors.addWidget(left)
+        editors.addWidget(right)
+        layout.addWidget(editors, 1)
+
+        actions = QHBoxLayout()
+        self.aes_status = QLabel("Sẵn sàng")
+        self.aes_status.setObjectName("Muted")
+        actions.addWidget(self.aes_status)
+        actions.addStretch()
+        encrypt_btn = QPushButton("Encrypt  →")
+        encrypt_btn.setObjectName("Primary")
+        encrypt_btn.clicked.connect(self.encrypt_aes_ui)
+        decrypt_btn = QPushButton("←  Decrypt")
+        decrypt_btn.clicked.connect(self.decrypt_aes_ui)
+        copy_btn = QPushButton("Copy")
+        copy_btn.clicked.connect(lambda: self.copy_tool_output(self.aes_output, self.aes_status))
+        clear_btn = QPushButton("Xóa")
+        clear_btn.clicked.connect(lambda: self.clear_tool_text(self.aes_input, self.aes_output, self.aes_status))
+        for button in (encrypt_btn, decrypt_btn, copy_btn, clear_btn):
+            actions.addWidget(button)
+        layout.addLayout(actions)
+
+        warning = QLabel("Lưu ý: GCM xác thực dữ liệu và phát hiện ciphertext bị sửa. Không bao giờ tái sử dụng cùng nonce với cùng key. CBC không có xác thực; chỉ dùng khi cần tương thích hệ thống cũ.")
+        warning.setObjectName("Muted")
+        warning.setWordWrap(True)
+        layout.addWidget(warning)
+        self.aes_mode.currentTextChanged.connect(self.on_aes_mode_changed)
+        return panel
+
+    def _aes_key_format_value(self):
+        return self.aes_key_format.currentText()
+
+    def generate_aes_key_ui(self):
+        try:
+            fmt = self._aes_key_format_value()
+            self.aes_key_input.setText(generate_aes_key(int(self.aes_key_bits.currentText()), fmt))
+            self.aes_status.setText("Đã tạo key ngẫu nhiên an toàn")
+        except ValueError as exc:
+            self.aes_status.setText(str(exc))
+
+    def generate_aes_iv_ui(self):
+        self.aes_iv_input.setText(generate_iv(self.aes_mode.currentText(), "Hex"))
+        self.aes_status.setText("Đã tạo IV/nonce ngẫu nhiên")
+
+    def on_aes_mode_changed(self, mode):
+        self.aes_iv_input.clear()
+        self.aes_iv_input.setPlaceholderText(
+            "12 byte / 24 ký tự Hex (GCM)" if mode == "GCM"
+            else "16 byte / 32 ký tự Hex (CBC)"
+        )
+
+    def _aes_arguments(self):
+        key = self.aes_key_input.text()
+        if not key:
+            raise ValueError("Vui lòng nhập hoặc tạo AES key.")
+        return (
+            key, self._aes_key_format_value(), self.aes_mode.currentText(),
+            self.aes_iv_input.text(), self.aes_output_format.currentText(),
+        )
+
+    def encrypt_aes_ui(self):
+        try:
+            key, key_format, mode, iv, output_format = self._aes_arguments()
+            encrypted, used_iv = aes_encrypt(
+                self.aes_input.toPlainText(), key, key_format, mode, iv, output_format
+            )
+            self.aes_iv_input.setText(used_iv)
+            self.aes_output.setPlainText(encrypted)
+            self.aes_status.setText("Mã hóa thành công · hãy lưu lại key và IV/nonce")
+        except Exception as exc:
+            self.aes_status.setText(f"Không thể mã hóa: {exc}")
+
+    def decrypt_aes_ui(self):
+        try:
+            key, key_format, mode, iv, output_format = self._aes_arguments()
+            decrypted = aes_decrypt(
+                self.aes_input.toPlainText().strip(), key, key_format, mode, iv, output_format
+            )
+            self.aes_output.setPlainText(decrypted)
+            self.aes_status.setText("Giải mã thành công")
+        except Exception as exc:
+            self.aes_status.setText(f"Không thể giải mã: {exc}")
+
+    @staticmethod
+    def copy_tool_output(output, status):
+        value = output.toPlainText()
+        if value:
+            QApplication.clipboard().setText(value)
+            status.setText("Đã sao chép")
+
+    @staticmethod
+    def swap_tool_text(source, output):
+        value = output.toPlainText()
+        source.setPlainText(value)
+        output.clear()
+
+    @staticmethod
+    def clear_tool_text(source, output, status):
+        source.clear()
+        output.clear()
+        status.setText("Đã xóa nội dung")
+
     def build_compare_panel(self):
         panel = QFrame()
         panel.setObjectName("Panel")
@@ -2287,7 +2572,28 @@ class MainWindow(QMainWindow):
             QApplication.clipboard().setText(text)
             self.json_diff_status.setText("Đã sao chép báo cáo")
 
+    def _show_tool_panel(self, tool: str):
+        self.mode = tool
+        self.add_files_btn.hide()
+        self.add_folder_btn.hide()
+        self.drop_area.hide()
+        self.queue_panel.hide()
+        self.action_panel.hide()
+        self.text_panel.hide()
+        self.compare_panel.hide()
+        self.curl_panel.hide()
+        self.url_panel.setVisible(tool == "url")
+        self.aes_panel.setVisible(tool == "aes")
+
     def on_mode_changed(self, index: int):
+        if index == 6:
+            self._show_tool_panel("url")
+            return
+        if index == 7:
+            self._show_tool_panel("aes")
+            return
+        self.url_panel.hide()
+        self.aes_panel.hide()
         if index == 3:
             self.mode = "text"
             self.curl_panel.hide()
