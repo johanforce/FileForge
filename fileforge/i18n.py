@@ -386,6 +386,7 @@ def _translate_dynamic(value: str) -> str:
             (r"^Recognized (.+)$", r"Đã nhận diện \1"),
             (r"^Process data: (.+)$", r"Xử lý dữ liệu: \1"),
             (r"^Completed (\d+) item\(s\)$", r"Hoàn tất \1 mục"),
+            (r"^Completed (\d+)/(\d+) item\(s\)$", r"Hoàn tất \1/\2 mục"),
             (r"^Successfully extracted (\d+) ZIP file\(s\)\.$", r"Đã giải nén thành công \1 tệp ZIP."),
             (r"^Successfully converted (\d+) image\(s\)\.$", r"Đã chuyển đổi thành công \1 ảnh."),
             (r"^([\d,.]+) seconds$", r"\1 giây"),
@@ -394,6 +395,9 @@ def _translate_dynamic(value: str) -> str:
             (r"^Task cancelled · kept (\d+) completed result\(s\)$", r"Đã hủy tác vụ · giữ lại \1 kết quả đã hoàn tất"),
             (r"^Cancelled · kept (\d+) completed result\(s\)$", r"Đã hủy · giữ lại \1 kết quả đã hoàn tất"),
             (r"^Kept (\d+) completed result\(s\)$", r"Đã giữ lại \1 kết quả hoàn tất"),
+            (r"^(\d+) item\(s\) failed$", r"\1 mục không xử lý được"),
+            (r"^… and (\d+) more error\(s\)\.$", r"… và \1 lỗi khác."),
+            (r"^\nSkipped (\d+) failed file\(s\)\.$", r"\nBỏ qua \1 tệp bị lỗi."),
         )
     else:
         patterns = (
@@ -415,6 +419,7 @@ def _translate_dynamic(value: str) -> str:
             (r"^Đã nhận diện (.+)$", r"Recognized \1"),
             (r"^Xử lý dữ liệu: (.+)$", r"Process data: \1"),
             (r"^Hoàn tất (\d+) mục$", r"Completed \1 item(s)"),
+            (r"^Hoàn tất (\d+)/(\d+) mục$", r"Completed \1/\2 item(s)"),
             (r"^Đã giải nén thành công (\d+) tệp ZIP\.$", r"Successfully extracted \1 ZIP file(s)."),
             (r"^Đã chuyển đổi thành công (\d+) ảnh\.$", r"Successfully converted \1 image(s)."),
             (r"^([\d,.]+) giây$", r"\1 seconds"),
@@ -423,6 +428,9 @@ def _translate_dynamic(value: str) -> str:
             (r"^Đã hủy tác vụ · giữ lại (\d+) kết quả đã hoàn tất$", r"Task cancelled · kept \1 completed result(s)"),
             (r"^Đã hủy · giữ lại (\d+) kết quả đã hoàn tất$", r"Cancelled · kept \1 completed result(s)"),
             (r"^Đã giữ lại (\d+) kết quả hoàn tất$", r"Kept \1 completed result(s)"),
+            (r"^(\d+) mục không xử lý được$", r"\1 item(s) failed"),
+            (r"^… và (\d+) lỗi khác\.$", r"… and \1 more error(s)."),
+            (r"^\nBỏ qua (\d+) tệp bị lỗi\.$", r"\nSkipped \1 failed file(s)."),
         )
     for pattern, replacement in patterns:
         if re.match(pattern, value):
