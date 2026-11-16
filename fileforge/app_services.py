@@ -130,7 +130,11 @@ class TaskHistoryStore:
         input_names = self._as_input_names(inputs)
         output_paths = self._as_paths(outputs)
         created_at = datetime.now().astimezone().isoformat(timespec="seconds")
-        normalized_status = status if status in {"success", "partial", "failed"} else "failed"
+        normalized_status = (
+            status
+            if status in {"success", "partial", "failed", "cancelled"}
+            else "failed"
+        )
 
         with self._connect() as connection:
             cursor = connection.execute(
