@@ -47,6 +47,15 @@ class TaskHistoryStoreTests(unittest.TestCase):
             self.assertEqual(len(records), 2)
             self.assertEqual([item["summary"] for item in records], ["three", "two"])
 
+    def test_cancelled_status_is_preserved(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = TaskHistoryStore(Path(temp_dir) / "history.sqlite3")
+            store.record(
+                "Chuyển ảnh", "cancelled", summary="Đã hủy · giữ lại 1 kết quả",
+            )
+            record = store.recent()[0]
+            self.assertEqual(record["status"], "cancelled")
+
     def test_clear_removes_all_task_records(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             store = TaskHistoryStore(Path(temp_dir) / "history.sqlite3")
