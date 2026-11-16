@@ -3604,16 +3604,17 @@ class MainWindow(QMainWindow):
             if self.isVisible() and not self.isMinimized():
                 QMessageBox.warning(
                     self,
-                    "Không có tệp được xử lý",
-                    "Không có tệp nào được xử lý thành công. "
-                    "Xem lịch sử tác vụ để biết chi tiết.",
+                    translate_text("Không có tệp được xử lý"),
+                    translate_text(
+                        "Không có tệp nào được xử lý thành công. Xem lịch sử tác vụ để biết chi tiết."
+                    ),
                 )
                 if details:
-                    QMessageBox.information(self, "Chi tiết lỗi", details)
+                    QMessageBox.information(self, translate_text("Chi tiết lỗi"), details)
             return
 
         if error_count:
-            message += f"\nBỏ qua {error_count} tệp bị lỗi."
+            message += translate_text(f"\nBỏ qua {error_count} tệp bị lỗi.")
         self._notify_user(title, summary)
         self.show_result(title, message, folder, details)
 
