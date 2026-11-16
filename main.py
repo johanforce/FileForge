@@ -1425,7 +1425,7 @@ class MainWindow(QMainWindow):
             QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
         except OSError as exc:
             QMessageBox.warning(
-                self, "Không thể mở thư mục cấu hình", str(exc)
+                self, translate_text("Không thể mở thư mục cấu hình"), str(exc)
             )
 
     def show_about(self):
@@ -1484,7 +1484,7 @@ class MainWindow(QMainWindow):
             event.ignore()
             self.tray_icon.showMessage(
                 APP_NAME,
-                "FileForge vẫn đang chạy trong khay hệ thống.",
+                translate_text("FileForge vẫn đang chạy trong khay hệ thống."),
                 QSystemTrayIcon.MessageIcon.Information,
                 3500,
             )
@@ -1494,8 +1494,8 @@ class MainWindow(QMainWindow):
         if self.busy or self.text_busy:
             QMessageBox.information(
                 self,
-                "Tác vụ đang chạy",
-                "Hãy chờ tác vụ hiện tại hoàn tất trước khi thoát FileForge.",
+                translate_text("Tác vụ đang chạy"),
+                translate_text("Hãy chờ tác vụ hiện tại hoàn tất trước khi thoát FileForge."),
             )
             event.ignore()
             return
@@ -2960,7 +2960,7 @@ class MainWindow(QMainWindow):
         if index != 1:
             return
         path, _ = QFileDialog.getOpenFileName(
-            self, "Chọn tệp JSON", str(Path.home()), "JSON (*.json);;Tất cả tệp (*)"
+            self, translate_text("Chọn tệp JSON"), str(Path.home()), translate_text("JSON (*.json);;Tất cả tệp (*)")
         )
         if path:
             try:
@@ -3305,7 +3305,7 @@ class MainWindow(QMainWindow):
 
     def choose_folder(self):
         folder = QFileDialog.getExistingDirectory(
-            self, "Chọn thư mục", self._input_start_directory()
+            self, translate_text("Chọn thư mục"), self._input_start_directory()
         )
         if folder:
             self._remember_last_directory("paths/last_input_directory", folder)
@@ -3430,7 +3430,7 @@ class MainWindow(QMainWindow):
             return
         paths = self.current_paths()
         if not paths:
-            QMessageBox.information(self, "Chưa có tệp", "Hãy thêm tệp trước khi tiếp tục.")
+            QMessageBox.information(self, translate_text("Chưa có tệp"), translate_text("Hãy thêm tệp trước khi tiếp tục."))
             return
 
         compression = "Balanced"
@@ -3440,9 +3440,9 @@ class MainWindow(QMainWindow):
         if self.mode == "zip":
             destination, _ = QFileDialog.getSaveFileName(
                 self,
-                "Lưu tệp ZIP",
+                translate_text("Lưu tệp ZIP"),
                 str(Path(self._output_start_directory()) / "FileForge.zip"),
-                ZIP_FILTER,
+                translate_text(ZIP_FILTER),
             )
             if not destination:
                 return
@@ -3451,13 +3451,13 @@ class MainWindow(QMainWindow):
             compression = str(self.compression.currentData() or "Balanced")
         elif self.mode == "extract":
             destination = QFileDialog.getExistingDirectory(
-                self, "Chọn nơi giải nén", self._output_start_directory()
+                self, translate_text("Chọn nơi giải nén"), self._output_start_directory()
             )
             if not destination:
                 return
         else:
             destination = QFileDialog.getExistingDirectory(
-                self, "Chọn thư mục lưu ảnh", self._output_start_directory()
+                self, translate_text("Chọn thư mục lưu ảnh"), self._output_start_directory()
             )
             if not destination:
                 return
@@ -3624,7 +3624,7 @@ class MainWindow(QMainWindow):
         self._notify_user("Tác vụ thất bại", message[:180])
         if self.isVisible() and not self.isMinimized():
             QMessageBox.critical(
-                self, "Có lỗi xảy ra", f"Không thể hoàn thành tác vụ.\n\n{message}"
+                self, translate_text("Có lỗi xảy ra"), translate_text(f"Không thể hoàn thành tác vụ.\n\n{message}")
             )
 
 
@@ -3867,7 +3867,7 @@ def main():
         except Exception:
             splash.close()
             QMessageBox.critical(
-                None, "Không thể khởi động FileForge", traceback.format_exc()
+                None, translate_text("Không thể khởi động FileForge"), traceback.format_exc()
             )
             app.quit()
             return
