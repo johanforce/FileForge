@@ -2571,13 +2571,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(title)
         layout.addWidget(subtitle)
 
-        # Dùng grid hai cột thay cho một hàng dài; các lựa chọn không còn
-        # chèn lên nhau khi người dùng thu nhỏ cửa sổ.
-        settings = QGridLayout()
-        settings.setHorizontalSpacing(14)
-        settings.setVerticalSpacing(6)
-        settings.setColumnStretch(0, 1)
-        settings.setColumnStretch(1, 1)
+        settings = QHBoxLayout()
         self.aes_mode = StyledComboBox()
         self.aes_mode.addItems(["CBC", "GCM", "CTR", "ECB"])
         self.aes_mode.setCurrentText("GCM")
@@ -2595,28 +2589,18 @@ class MainWindow(QMainWindow):
         self.aes_iv_format.addItems(["UTF-8", "HEX", "BASE-64"])
         self.aes_iv_format.setCurrentText("BASE-64")
         self.aes_iv_format.setToolTip("IV/nonce UTF-8 được dùng trực tiếp làm byte. IV sinh dạng UTF-8 dễ đọc có entropy thấp hơn HEX/Base-64; nên chọn HEX/Base-64 để có IV ngẫu nhiên đủ entropy.")
-        aes_options = (
-            ("Cipher mode", self.aes_mode),
-            ("Padding", self.aes_padding),
-            ("Key size (tạo key)", self.aes_key_bits),
-            ("Key format", self.aes_key_format),
+        for label, widget in (
+            ("Cipher mode", self.aes_mode), ("Padding", self.aes_padding),
+            ("Key size (tạo key)", self.aes_key_bits), ("Key format", self.aes_key_format),
             ("IV format", self.aes_iv_format),
-        )
-        for index, (label_text, widget) in enumerate(aes_options):
-            row, column = divmod(index, 2)
-            label = QLabel(label_text)
-            label.setObjectName("Muted")
-            settings.addWidget(label, row * 2, column)
-            widget.setSizePolicy(widget.sizePolicy().horizontalPolicy(), widget.sizePolicy().verticalPolicy())
-            settings.addWidget(widget, row * 2 + 1, column)
+        ):
+            settings.addWidget(QLabel(label))
+            settings.addWidget(widget)
         layout.addLayout(settings)
 
         key_row = QHBoxLayout()
-        key_label = QLabel("KEY")
-        key_label.setMinimumWidth(76)
-        key_row.addWidget(key_label)
+        key_row.addWidget(QLabel("KEY"))
         self.aes_key_input = QLineEdit()
-        self.aes_key_input.setMinimumWidth(0)
         self.aes_key_input.setEchoMode(QLineEdit.EchoMode.Password)
         self.aes_key_input.setPlaceholderText("Key theo định dạng đã chọn…")
         key_row.addWidget(self.aes_key_input, 1)
@@ -2634,10 +2618,8 @@ class MainWindow(QMainWindow):
 
         iv_row = QHBoxLayout()
         self.aes_iv_label = QLabel("IV / NONCE")
-        self.aes_iv_label.setMinimumWidth(76)
         iv_row.addWidget(self.aes_iv_label)
         self.aes_iv_input = QLineEdit()
-        self.aes_iv_input.setMinimumWidth(0)
         self.aes_iv_input.setPlaceholderText("Tự sinh khi Encode; lưu lại để Decode")
         iv_row.addWidget(self.aes_iv_input, 1)
         self.aes_generate_iv_btn = QPushButton("Tạo IV")
@@ -2710,47 +2692,37 @@ class MainWindow(QMainWindow):
         editors.addWidget(right)
         layout.addWidget(editors, 1)
 
-        # Tách cấu hình định dạng và nhóm nút thao tác thành hai hàng,
-        # tránh ép tất cả control vào cùng một hàng hẹp.
-        options = QGridLayout()
-        options.setHorizontalSpacing(10)
-        options.setVerticalSpacing(8)
+        options = QHBoxLayout()
         if action == "encode":
-            format_label = QLabel("Ciphertext output")
+            options.addWidget(QLabel("Ciphertext output"))
             self.aes_encode_format = StyledComboBox()
             self.aes_encode_format.addItems(["Base64", "Hex"])
-            options.addWidget(format_label, 0, 0)
-            options.addWidget(self.aes_encode_format, 0, 1)
+            options.addWidget(self.aes_encode_format)
             run = QPushButton("Encrypt  →")
             run.setObjectName("Primary")
             run.clicked.connect(self.encrypt_aes_ui)
         else:
-            input_format_label = QLabel("Ciphertext input")
+            options.addWidget(QLabel("Ciphertext input"))
             self.aes_decode_input_format = StyledComboBox()
             self.aes_decode_input_format.addItems(["Base64", "Hex"])
-            output_format_label = QLabel("Decode output")
+            options.addWidget(self.aes_decode_input_format)
+            options.addSpacing(12)
+            options.addWidget(QLabel("Decode output"))
             self.aes_decode_output_format = StyledComboBox()
             self.aes_decode_output_format.addItems(["Plaintext", "Base64"])
-            options.addWidget(input_format_label, 0, 0)
-            options.addWidget(self.aes_decode_input_format, 0, 1)
-            options.addWidget(output_format_label, 0, 2)
-            options.addWidget(self.aes_decode_output_format, 0, 3)
+            options.addWidget(self.aes_decode_output_format)
             run = QPushButton("←  Decrypt")
             run.setObjectName("Primary")
             run.clicked.connect(self.decrypt_aes_ui)
 
-        actions = QHBoxLayout()
-        actions.addStretch()
+        options.addStretch()
         copy = QPushButton("Copy output")
         copy.clicked.connect(lambda: self.copy_tool_output(output_editor, self.aes_status))
         clear = QPushButton("Xóa")
         clear.clicked.connect(lambda: self.clear_tool_text(input_editor, output_editor, self.aes_status))
-        actions.addWidget(run)
-        actions.addWidget(copy)
-        actions.addWidget(clear)
-        options.addLayout(actions, 1, 0, 1, 4)
-        options.setColumnStretch(1, 1)
-        options.setColumnStretch(3, 1)
+        options.addWidget(run)
+        options.addWidget(copy)
+        options.addWidget(clear)
         layout.addLayout(options)
         return page, input_editor, output_editor
 
