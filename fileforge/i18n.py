@@ -308,6 +308,7 @@ ENGLISH = {
     "Thành công": "Success",
     "Xóa toàn bộ lịch sử tác vụ trên máy này? Thao tác này không xóa các tệp kết quả.": "Clear all task history on this computer? This will not delete output files.",
     "Giấy phép": "License",
+    "Giấy phép MIT": "MIT License",
     "Giới thiệu": "About",
     "Tùy chọn FileForge": "FileForge Preferences",
     "Thiết lập cách FileForge ghi nhớ phiên làm việc và thư mục.": "Choose what FileForge remembers between sessions.",
