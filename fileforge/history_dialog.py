@@ -25,7 +25,7 @@ from fileforge.app_services import TaskHistoryStore
 class TaskHistoryDialog(QDialog):
     """Show recent file-processing tasks and allow opening their output folders."""
 
-    HEADERS = ["Thời gian", "Tác vụ", "Trạng thái", "Số tệp", "Thời lượng", "Kết quả"]
+    HEADERS = ["Thời gian", "Tác vụ", "Trạng thái", "Số mục", "Thời lượng", "Kết quả"]
 
     def __init__(self, history: TaskHistoryStore, parent: QWidget | None = None):
         super().__init__(parent)
