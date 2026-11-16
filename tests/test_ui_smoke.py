@@ -282,6 +282,8 @@ class UISmokeTests(unittest.TestCase):
             [window.aes_key_format.itemText(i) for i in range(window.aes_key_format.count())],
             ["UTF-8", "HEX", "BASE-64"],
         )
+        self.assertEqual(window.aes_key_format.currentText(), "BASE-64")
+        self.assertEqual(window.aes_iv_format.currentText(), "BASE-64")
 
         window.generate_aes_key_ui()
         window.aes_encode_input.setPlainText("FileForge test")
