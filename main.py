@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import difflib
 import html
 import re
@@ -58,6 +59,8 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QProgressBar,
+    QScrollArea,
+    QTabBar,
     QPushButton,
     QSlider,
     QStackedWidget,
@@ -83,6 +86,9 @@ from fileforge.images import SUPPORTED_IMAGE_EXTENSIONS, convert_images
 from fileforge.text_utils import process_text
 from fileforge.compare import compare_text, compare_json, format_text_diff_report
 from fileforge.curl_utils import parse_http_request
+from fileforge.crypto_utils import (
+    aes_decrypt, aes_encrypt, generate_aes_key, generate_iv, url_decode, url_encode,
+)
 
 
 # --------------------------------------------------------------------------
@@ -856,6 +862,93 @@ class CodeSyntaxHighlighter(QSyntaxHighlighter):
                 self.setFormat(match.start(), match.end() - match.start(), fmt)
 
 
+class ScrollableTabWidget(QWidget):
+    """Compact tab strip that scrolls horizontally without navigation arrows."""
+
+    currentChanged = Signal(int)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+
+        self.scroll_area = QScrollArea()
+        self.scroll_area.setObjectName("ScrollableTabArea")
+        self.scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+        self.scroll_area.setWidgetResizable(False)
+        self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.scroll_area.setStyleSheet("QScrollArea#ScrollableTabArea { background: transparent; border: 0; }")
+
+        self.tab_bar = QTabBar()
+        self.tab_bar.setExpanding(False)
+        self.tab_bar.setUsesScrollButtons(False)
+        self.tab_bar.setElideMode(Qt.TextElideMode.ElideNone)
+        self.tab_bar.setDrawBase(False)
+        self.tab_bar.setStyleSheet("""
+            QTabBar::tab {
+                background: transparent; color: #5f6368;
+                padding: 10px 15px; margin-right: 4px;
+                border-bottom: 2px solid transparent; font-weight: 650;
+            }
+            QTabBar::tab:selected { color: #1a73e8; border-bottom: 2px solid #1a73e8; }
+            QTabBar::tab:hover { color: #174ea6; }
+        """)
+        self.tab_bar.currentChanged.connect(self.currentChanged.emit)
+        self.tab_bar.installEventFilter(self)
+        self.scroll_area.setWidget(self.tab_bar)
+        layout.addWidget(self.scroll_area)
+        self._sync_tab_bar_size()
+
+    def addTab(self, widget, label: str) -> int:
+        index = self.tab_bar.addTab(label)
+        self._sync_tab_bar_size()
+        return index
+
+    def count(self) -> int:
+        return self.tab_bar.count()
+
+    def currentIndex(self) -> int:
+        return self.tab_bar.currentIndex()
+
+    def setCurrentIndex(self, index: int):
+        self.tab_bar.setCurrentIndex(index)
+        self.ensure_current_tab_visible()
+
+    def _sync_tab_bar_size(self):
+        width = sum(self.tab_bar.tabSizeHint(i).width() for i in range(self.tab_bar.count()))
+        height = max(42, self.tab_bar.sizeHint().height())
+        self.tab_bar.setFixedSize(max(1, width + 4), height)
+        self.scroll_area.setFixedHeight(height)
+        self.ensure_current_tab_visible()
+
+    def ensure_current_tab_visible(self):
+        index = self.tab_bar.currentIndex()
+        if index < 0:
+            return
+        rect = self.tab_bar.tabRect(index)
+        bar = self.scroll_area.horizontalScrollBar()
+        left, right = bar.value(), bar.value() + self.scroll_area.viewport().width()
+        if rect.left() < left:
+            bar.setValue(rect.left())
+        elif rect.right() > right:
+            bar.setValue(rect.right() - self.scroll_area.viewport().width())
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.ensure_current_tab_visible()
+
+    def eventFilter(self, watched, event):
+        if watched is self.tab_bar and event.type() == QEvent.Type.Wheel:
+            delta = event.angleDelta().x() or event.angleDelta().y()
+            if delta:
+                bar = self.scroll_area.horizontalScrollBar()
+                bar.setValue(bar.value() - delta)
+                return True
+        return super().eventFilter(watched, event)
+
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -912,13 +1005,15 @@ class MainWindow(QMainWindow):
         header.addWidget(self.add_folder_btn)
         outer.addLayout(header)
 
-        self.tabs = QTabWidget()
-        self.tabs.addTab(QWidget(), "Nén ZIP")
-        self.tabs.addTab(QWidget(), "Giải nén")
+        self.tabs = ScrollableTabWidget()
         self.tabs.addTab(QWidget(), "Chuyển ảnh")
         self.tabs.addTab(QWidget(), "JSON / XML")
         self.tabs.addTab(QWidget(), "So sánh")
         self.tabs.addTab(QWidget(), "String → cURL")
+        self.tabs.addTab(QWidget(), "URL Encoder / Decoder")
+        self.tabs.addTab(QWidget(), "AES Encrypt / Decrypt")
+        self.tabs.addTab(QWidget(), "Giải nén")
+        self.tabs.addTab(QWidget(), "Nén ZIP")
         self.tabs.currentChanged.connect(self.on_mode_changed)
         outer.addWidget(self.tabs)
 
@@ -1071,6 +1166,14 @@ class MainWindow(QMainWindow):
         self.curl_panel = self.build_curl_panel()
         outer.addWidget(self.curl_panel, 1)
         self.curl_panel.hide()
+
+        self.url_panel = self.build_url_panel()
+        outer.addWidget(self.url_panel, 1)
+        self.url_panel.hide()
+
+        self.aes_panel = self.build_aes_panel()
+        outer.addWidget(self.aes_panel, 1)
+        self.aes_panel.hide()
 
         self.on_mode_changed(0)
         self.refresh_queue()
@@ -1907,6 +2010,367 @@ class MainWindow(QMainWindow):
             QApplication.clipboard().setText(value)
             self.curl_status.setText("Đã sao chép lệnh cURL")
 
+    def build_url_panel(self):
+        panel = QFrame()
+        panel.setObjectName("Panel")
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(16, 14, 16, 14)
+        layout.setSpacing(10)
+
+        title = QLabel("URL Encoder / Decoder")
+        title.setObjectName("Brand")
+        subtitle = QLabel("Mã hóa và giải mã URL theo UTF-8 · xử lý hoàn toàn trên thiết bị")
+        subtitle.setObjectName("Muted")
+        layout.addWidget(title)
+        layout.addWidget(subtitle)
+
+        options = QHBoxLayout()
+        self.url_component_mode = QCheckBox("Encode URI Component")
+        self.url_component_mode.setChecked(True)
+        options.addWidget(self.url_component_mode)
+        options.addStretch()
+        layout.addLayout(options)
+
+        editors = QSplitter(Qt.Orientation.Horizontal)
+        source_col = QWidget()
+        source_layout = QVBoxLayout(source_col)
+        source_layout.setContentsMargins(0, 0, 0, 0)
+        source_label = QLabel("INPUT")
+        source_label.setObjectName("Section")
+        source_layout.addWidget(source_label)
+        self.url_input = QPlainTextEdit()
+        self.url_input.setObjectName("CodeEditor")
+        self.url_input.setPlaceholderText("Nhập URL hoặc chuỗi cần chuyển đổi…")
+        source_layout.addWidget(self.url_input, 1)
+
+        output_col = QWidget()
+        output_layout = QVBoxLayout(output_col)
+        output_layout.setContentsMargins(0, 0, 0, 0)
+        output_label = QLabel("OUTPUT")
+        output_label.setObjectName("Section")
+        output_layout.addWidget(output_label)
+        self.url_output = QPlainTextEdit()
+        self.url_output.setObjectName("CodeEditor")
+        self.url_output.setReadOnly(True)
+        self.url_output.setPlaceholderText("Kết quả sẽ xuất hiện ở đây…")
+        output_layout.addWidget(self.url_output, 1)
+        editors.addWidget(source_col)
+        editors.addWidget(output_col)
+        layout.addWidget(editors, 1)
+
+        actions = QHBoxLayout()
+        self.url_status = QLabel("Sẵn sàng")
+        self.url_status.setObjectName("Muted")
+        actions.addWidget(self.url_status)
+        actions.addStretch()
+        encode_btn = QPushButton("Encode  →")
+        encode_btn.setObjectName("Primary")
+        encode_btn.clicked.connect(self.encode_url)
+        decode_btn = QPushButton("←  Decode")
+        decode_btn.clicked.connect(self.decode_url)
+        copy_btn = QPushButton("Copy")
+        copy_btn.clicked.connect(lambda: self.copy_tool_output(self.url_output, self.url_status))
+        swap_btn = QPushButton("⇄ Đổi bên")
+        swap_btn.clicked.connect(lambda: self.swap_tool_text(self.url_input, self.url_output))
+        clear_btn = QPushButton("Xóa")
+        clear_btn.clicked.connect(lambda: self.clear_tool_text(self.url_input, self.url_output, self.url_status))
+        for button in (encode_btn, decode_btn, copy_btn, swap_btn, clear_btn):
+            actions.addWidget(button)
+        layout.addLayout(actions)
+        return panel
+
+    def encode_url(self):
+        try:
+            result = url_encode(self.url_input.toPlainText(), self.url_component_mode.isChecked())
+            self.url_output.setPlainText(result)
+            self.url_status.setText("Đã encode URL")
+        except (ValueError, UnicodeError) as exc:
+            self.url_status.setText(f"Lỗi: {exc}")
+
+    def decode_url(self):
+        try:
+            result = url_decode(self.url_input.toPlainText())
+            self.url_output.setPlainText(result)
+            self.url_status.setText("Đã decode URL")
+        except (ValueError, UnicodeError) as exc:
+            self.url_status.setText(f"Lỗi: {exc}")
+
+    def build_aes_panel(self):
+        panel = QFrame()
+        panel.setObjectName("Panel")
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(16, 14, 16, 14)
+        layout.setSpacing(9)
+
+        title = QLabel("AES Encryption / Decryption")
+        title.setObjectName("Brand")
+        subtitle = QLabel("Chọn riêng giao diện Encode hoặc Decode · xử lý hoàn toàn offline")
+        subtitle.setObjectName("Muted")
+        layout.addWidget(title)
+        layout.addWidget(subtitle)
+
+        settings = QHBoxLayout()
+        self.aes_mode = StyledComboBox()
+        self.aes_mode.addItems(["CBC", "GCM", "CTR", "ECB"])
+        self.aes_mode.setCurrentText("GCM")
+        self.aes_padding = StyledComboBox()
+        self.aes_padding.addItems(["NoPadding", "PKCS5Padding"])
+        self.aes_key_bits = StyledComboBox()
+        self.aes_key_bits.addItems(["128", "192", "256"])
+        self.aes_key_bits.setCurrentText("256")
+        self.aes_key_format = StyledComboBox()
+        self.aes_key_format.addItems(["UTF-8", "HEX", "BASE-64"])
+        self.aes_key_format.setCurrentText("BASE-64")
+        self.aes_key_bits.setToolTip("Chỉ dùng khi bấm Tạo key. Key nhập tay được xác định kích thước từ số byte thực tế.")
+        self.aes_key_format.setToolTip("UTF-8 được dùng trực tiếp làm byte của key, không phải mật khẩu qua KDF. Key sau khi giải mã định dạng phải dài 16, 24 hoặc 32 byte. Key sinh dạng UTF-8 dễ đọc có entropy thấp hơn HEX/Base-64; nên chọn HEX/Base-64 để có key ngẫu nhiên đủ entropy.")
+        self.aes_iv_format = StyledComboBox()
+        self.aes_iv_format.addItems(["UTF-8", "HEX", "BASE-64"])
+        self.aes_iv_format.setCurrentText("BASE-64")
+        self.aes_iv_format.setToolTip("IV/nonce UTF-8 được dùng trực tiếp làm byte. IV sinh dạng UTF-8 dễ đọc có entropy thấp hơn HEX/Base-64; nên chọn HEX/Base-64 để có IV ngẫu nhiên đủ entropy.")
+        for label, widget in (
+            ("Cipher mode", self.aes_mode), ("Padding", self.aes_padding),
+            ("Key size (tạo key)", self.aes_key_bits), ("Key format", self.aes_key_format),
+            ("IV format", self.aes_iv_format),
+        ):
+            settings.addWidget(QLabel(label))
+            settings.addWidget(widget)
+        layout.addLayout(settings)
+
+        key_row = QHBoxLayout()
+        key_row.addWidget(QLabel("KEY"))
+        self.aes_key_input = QLineEdit()
+        self.aes_key_input.setEchoMode(QLineEdit.EchoMode.Password)
+        self.aes_key_input.setPlaceholderText("Key theo định dạng đã chọn…")
+        key_row.addWidget(self.aes_key_input, 1)
+        self.aes_show_key = QCheckBox("Hiện")
+        self.aes_show_key.toggled.connect(
+            lambda visible: self.aes_key_input.setEchoMode(
+                QLineEdit.EchoMode.Normal if visible else QLineEdit.EchoMode.Password
+            )
+        )
+        key_row.addWidget(self.aes_show_key)
+        gen_key = QPushButton("Tạo key")
+        gen_key.clicked.connect(self.generate_aes_key_ui)
+        key_row.addWidget(gen_key)
+        layout.addLayout(key_row)
+
+        iv_row = QHBoxLayout()
+        self.aes_iv_label = QLabel("IV / NONCE")
+        iv_row.addWidget(self.aes_iv_label)
+        self.aes_iv_input = QLineEdit()
+        self.aes_iv_input.setPlaceholderText("Tự sinh khi Encode; lưu lại để Decode")
+        iv_row.addWidget(self.aes_iv_input, 1)
+        self.aes_generate_iv_btn = QPushButton("Tạo IV")
+        self.aes_generate_iv_btn.clicked.connect(self.generate_aes_iv_ui)
+        iv_row.addWidget(self.aes_generate_iv_btn)
+        layout.addLayout(iv_row)
+
+        self.aes_action_tabs = QTabWidget()
+        encode_page, self.aes_encode_input, self.aes_encode_output = self._build_aes_editor_page(
+            "PLAINTEXT INPUT", "Nhập plaintext cần mã hóa…",
+            "CIPHERTEXT OUTPUT", "Ciphertext sẽ xuất hiện ở đây…", "encode",
+        )
+        decode_page, self.aes_decode_input, self.aes_decode_output = self._build_aes_editor_page(
+            "CIPHERTEXT INPUT", "Dán ciphertext cần giải mã…",
+            "PLAINTEXT / BASE64 OUTPUT", "Kết quả giải mã sẽ xuất hiện ở đây…", "decode",
+        )
+        self.aes_action_tabs.addTab(encode_page, "1. Encode")
+        self.aes_action_tabs.addTab(decode_page, "2. Decode")
+        layout.addWidget(self.aes_action_tabs, 1)
+
+        self.aes_status = QLabel("Sẵn sàng")
+        self.aes_status.setObjectName("Muted")
+        layout.addWidget(self.aes_status)
+
+        warning = QLabel(
+            "GCM có xác thực và nên được ưu tiên; GCM/CTR chỉ dùng NoPadding. "
+            "Không tái sử dụng nonce/IV với cùng key trong GCM hoặc CTR. GCM xuất ciphertext kèm tag xác thực 16 byte ở cuối. "
+            "CBC/ECB hỗ trợ NoPadding hoặc PKCS5Padding (PKCS7 cho block AES); CBC/CTR/ECB không tự xác thực ciphertext. "
+            "ECB không phù hợp cho dữ liệu nhạy cảm. Key UTF-8 là byte trực tiếp, không qua KDF."
+        )
+        warning.setObjectName("Muted")
+        warning.setWordWrap(True)
+        layout.addWidget(warning)
+
+        self.aes_mode.currentTextChanged.connect(self.on_aes_mode_changed)
+        self.aes_key_bits.currentTextChanged.connect(self.on_aes_key_bits_changed)
+        self.on_aes_mode_changed(self.aes_mode.currentText())
+        return panel
+
+    def _build_aes_editor_page(self, input_title, input_placeholder, output_title, output_placeholder, action):
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(4, 8, 4, 4)
+        layout.setSpacing(8)
+
+        editors = QSplitter(Qt.Orientation.Horizontal)
+        left = QWidget()
+        left_layout = QVBoxLayout(left)
+        left_layout.setContentsMargins(0, 0, 0, 0)
+        left_label = QLabel(input_title)
+        left_label.setObjectName("Section")
+        left_layout.addWidget(left_label)
+        input_editor = QPlainTextEdit()
+        input_editor.setObjectName("CodeEditor")
+        input_editor.setPlaceholderText(input_placeholder)
+        left_layout.addWidget(input_editor, 1)
+
+        right = QWidget()
+        right_layout = QVBoxLayout(right)
+        right_layout.setContentsMargins(0, 0, 0, 0)
+        right_label = QLabel(output_title)
+        right_label.setObjectName("Section")
+        right_layout.addWidget(right_label)
+        output_editor = QPlainTextEdit()
+        output_editor.setObjectName("CodeEditor")
+        output_editor.setReadOnly(True)
+        output_editor.setPlaceholderText(output_placeholder)
+        right_layout.addWidget(output_editor, 1)
+        editors.addWidget(left)
+        editors.addWidget(right)
+        layout.addWidget(editors, 1)
+
+        options = QHBoxLayout()
+        if action == "encode":
+            options.addWidget(QLabel("Ciphertext output"))
+            self.aes_encode_format = StyledComboBox()
+            self.aes_encode_format.addItems(["Base64", "Hex"])
+            options.addWidget(self.aes_encode_format)
+            run = QPushButton("Encrypt  →")
+            run.setObjectName("Primary")
+            run.clicked.connect(self.encrypt_aes_ui)
+        else:
+            options.addWidget(QLabel("Ciphertext input"))
+            self.aes_decode_input_format = StyledComboBox()
+            self.aes_decode_input_format.addItems(["Base64", "Hex"])
+            options.addWidget(self.aes_decode_input_format)
+            options.addSpacing(12)
+            options.addWidget(QLabel("Decode output"))
+            self.aes_decode_output_format = StyledComboBox()
+            self.aes_decode_output_format.addItems(["Plaintext", "Base64"])
+            options.addWidget(self.aes_decode_output_format)
+            run = QPushButton("←  Decrypt")
+            run.setObjectName("Primary")
+            run.clicked.connect(self.decrypt_aes_ui)
+
+        options.addStretch()
+        copy = QPushButton("Copy output")
+        copy.clicked.connect(lambda: self.copy_tool_output(output_editor, self.aes_status))
+        clear = QPushButton("Xóa")
+        clear.clicked.connect(lambda: self.clear_tool_text(input_editor, output_editor, self.aes_status))
+        options.addWidget(run)
+        options.addWidget(copy)
+        options.addWidget(clear)
+        layout.addLayout(options)
+        return page, input_editor, output_editor
+
+    def _aes_key_format_value(self):
+        return self.aes_key_format.currentText()
+
+    def generate_aes_key_ui(self):
+        try:
+            key_format = self._aes_key_format_value()
+            self.aes_key_input.setText(
+                generate_aes_key(int(self.aes_key_bits.currentText()), key_format)
+            )
+            if key_format == "UTF-8":
+                self.aes_status.setText("Đã tạo key UTF-8 tiện nhập; entropy thấp hơn HEX/Base-64. Nên dùng HEX/Base-64 cho key ngẫu nhiên.")
+            else:
+                self.aes_status.setText("Đã tạo key ngẫu nhiên bằng CSPRNG")
+        except ValueError as exc:
+            self.aes_status.setText(str(exc))
+
+    def generate_aes_iv_ui(self):
+        mode = self.aes_mode.currentText()
+        if mode == "ECB":
+            self.aes_iv_input.clear()
+            self.aes_status.setText("ECB không sử dụng IV")
+            return
+        iv_format = self.aes_iv_format.currentText()
+        self.aes_iv_input.setText(generate_iv(mode, iv_format))
+        if iv_format == "UTF-8":
+            self.aes_status.setText("Đã tạo IV UTF-8 tiện nhập; entropy thấp hơn HEX/Base-64. Nên dùng HEX/Base-64 cho IV ngẫu nhiên.")
+        else:
+            self.aes_status.setText("Đã tạo IV/nonce ngẫu nhiên bằng CSPRNG")
+
+    def on_aes_key_bits_changed(self, _value):
+        # A UTF-8 key generated by this tool uses ASCII characters, one byte each.
+        self.aes_key_input.clear()
+
+    def on_aes_mode_changed(self, mode):
+        stream_mode = mode in ("GCM", "CTR")
+        self.aes_padding.setEnabled(not stream_mode)
+        if stream_mode:
+            self.aes_padding.setCurrentText("NoPadding")
+        is_ecb = mode == "ECB"
+        self.aes_iv_input.setEnabled(not is_ecb)
+        self.aes_iv_label.setEnabled(not is_ecb)
+        self.aes_generate_iv_btn.setEnabled(not is_ecb)
+        self.aes_iv_input.clear()
+        if mode == "GCM":
+            self.aes_iv_input.setPlaceholderText("GCM khuyến nghị IV 12 byte")
+        elif mode in ("CBC", "CTR"):
+            self.aes_iv_input.setPlaceholderText("IV/counter 16 byte")
+        else:
+            self.aes_iv_input.setPlaceholderText("ECB không sử dụng IV")
+
+    def _aes_arguments(self):
+        key = self.aes_key_input.text()
+        if not key:
+            raise ValueError("Vui lòng nhập hoặc tạo AES key.")
+        return (
+            key, self._aes_key_format_value(), self.aes_mode.currentText(),
+            self.aes_iv_input.text(), self.aes_iv_format.currentText(),
+            self.aes_padding.currentText(),
+        )
+
+    def encrypt_aes_ui(self):
+        try:
+            key, key_format, mode, iv, iv_format, padding_name = self._aes_arguments()
+            output_format = self.aes_encode_format.currentText()
+            encrypted, used_iv = aes_encrypt(
+                self.aes_encode_input.toPlainText(), key, key_format, mode, iv,
+                output_format, iv_format, padding_name,
+            )
+            if mode != "ECB":
+                self.aes_iv_input.setText(used_iv)
+            self.aes_encode_output.setPlainText(encrypted)
+            self.aes_status.setText("Encode thành công · lưu lại key và IV/nonce để Decode")
+        except Exception as exc:
+            self.aes_status.setText(f"Không thể encode: {exc}")
+
+    def decrypt_aes_ui(self):
+        try:
+            key, key_format, mode, iv, iv_format, padding_name = self._aes_arguments()
+            decrypted = aes_decrypt(
+                self.aes_decode_input.toPlainText().strip(), key, key_format, mode, iv,
+                self.aes_decode_input_format.currentText(), iv_format, padding_name,
+                self.aes_decode_output_format.currentText(),
+            )
+            self.aes_decode_output.setPlainText(decrypted)
+            self.aes_status.setText("Decode thành công")
+        except Exception as exc:
+            self.aes_status.setText(f"Không thể decode: {exc}")
+
+    @staticmethod
+    def copy_tool_output(output, status):
+        value = output.toPlainText()
+        if value:
+            QApplication.clipboard().setText(value)
+            status.setText("Đã sao chép")
+
+    @staticmethod
+    def swap_tool_text(source, output):
+        value = output.toPlainText()
+        source.setPlainText(value)
+        output.clear()
+
+    @staticmethod
+    def clear_tool_text(source, output, status):
+        source.clear()
+        output.clear()
+        status.setText("Đã xóa nội dung")
+
     def build_compare_panel(self):
         panel = QFrame()
         panel.setObjectName("Panel")
@@ -2287,8 +2751,31 @@ class MainWindow(QMainWindow):
             QApplication.clipboard().setText(text)
             self.json_diff_status.setText("Đã sao chép báo cáo")
 
+    def _show_tool_panel(self, tool: str):
+        self.mode = tool
+        self.add_files_btn.hide()
+        self.add_folder_btn.hide()
+        self.drop_area.hide()
+        self.queue_panel.hide()
+        self.action_panel.hide()
+        self.text_panel.hide()
+        self.compare_panel.hide()
+        self.curl_panel.hide()
+        self.url_panel.setVisible(tool == "url")
+        self.aes_panel.setVisible(tool == "aes")
+
     def on_mode_changed(self, index: int):
-        if index == 3:
+        if index == 4:
+            self._show_tool_panel("url")
+            return
+        if index == 5:
+            self._show_tool_panel("aes")
+            return
+
+        self.url_panel.hide()
+        self.aes_panel.hide()
+
+        if index == 1:
             self.mode = "text"
             self.curl_panel.hide()
             self.add_files_btn.hide()
@@ -2300,7 +2787,7 @@ class MainWindow(QMainWindow):
             self.text_panel.show()
             return
 
-        if index == 4:
+        if index == 2:
             self.mode = "compare"
             self.curl_panel.hide()
             self.add_files_btn.hide()
@@ -2312,7 +2799,7 @@ class MainWindow(QMainWindow):
             self.compare_panel.show()
             return
 
-        if index == 5:
+        if index == 3:
             self.mode = "curl"
             self.add_files_btn.hide()
             self.add_folder_btn.hide()
@@ -2332,7 +2819,9 @@ class MainWindow(QMainWindow):
         self.drop_area.show()
         self.queue_panel.show()
         self.action_panel.show()
-        self.mode = ("zip", "extract", "image")[index]
+
+        # Tab order: Image, Text, Compare, cURL, URL, AES, Extract, ZIP.
+        self.mode = {0: "image", 6: "extract", 7: "zip"}.get(index, "image")
 
         if self.mode == "zip":
             self.add_files_btn.setText("＋  Thêm tệp")

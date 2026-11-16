@@ -1,0 +1,83 @@
+name: Build Windows EXE
+
+on:
+  pull_request:
+    types:
+      - closed
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    # A closed PR is not enough: the EXE is built only for a successful merge to main.
+    if: github.event.pull_request.merged == true
+    runs-on: windows-latest
+    steps:
+      - name: Check out merged main commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: requirements.txt
+
+      - name: Install application and build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install "pyinstaller>=6.10,<7"
+
+      - name: Build standalone Windows executable
+        run: >
+          pyinstaller
+          --noconfirm
+          --clean
+          --onefile
+          --windowed
+          --name FileForge
+          --icon assets/logo.ico
+          --add-data "assets;assets"
+          --distpath dist
+          --workpath build
+          --specpath build
+          main.py
+
+      - name: Verify executable and write SHA-256 checksum
+        shell: pwsh
+        run: |
+          $exe = "dist/FileForge.exe"
+          if (-not (Test-Path $exe)) {
+            throw "PyInstaller did not create dist/FileForge.exe"
+          }
+
+          $hash = (Get-FileHash $exe -Algorithm SHA256).Hash
+          "$hash  FileForge.exe" | Set-Content "dist/FileForge.exe.sha256"
+
+      - name: Upload downloadable EXE artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: FileForge-Windows-EXE-PR-${{ github.event.pull_request.number }}
+          path: |
+            dist/FileForge.exe
+            dist/FileForge.exe.sha256
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish download instructions
+        if: success()
+        shell: pwsh
+        run: |
+          @"
+          ## FileForge Windows build ready
+
+          The standalone `FileForge.exe` and its SHA-256 checksum are available in this workflow run's **Artifacts** section.
+          Artifact name: `FileForge-Windows-EXE-PR-${{ github.event.pull_request.number }}`
+          Retention: 30 days.
+          "@ | Add-Content $env:GITHUB_STEP_SUMMARY

@@ -37,6 +37,19 @@
 - Giao diện theo Material Design 3; vùng Input/Output dùng nền tối và tô màu cú pháp theo phong cách Android Studio cho JSON, Java, Kotlin và C; HTML có tô màu cú pháp, tách dòng thuộc tính khi có nhiều thuộc tính, click marker ▼/▶ để thu gọn từng thẻ, nút thu gọn/mở rộng tất cả, tìm kiếm, Copy và bật/tắt Wrap.\n- Phím tắt: Ctrl+Enter để chuyển đổi, Ctrl+F để tìm trong ô đang focus (Input hoặc Output), Esc để đóng tìm kiếm.
 - Hỗ trợ object lồng nhau, mảng, trường có thể thiếu và giá trị null; JSON root dạng mảng/scalar được bọc trong `root`.
 
+### URL Encoder / Decoder
+- Mã hóa/giải mã URL và URI Component theo UTF-8; giữ nguyên dấu `+` khi decode.
+- Hỗ trợ encode/decode trực tiếp, đổi bên, sao chép và xóa nội dung.
+
+### AES Encrypt / Decrypt
+- Giao diện tách thành hai màn hình riêng: Encode và Decode.
+- AES-128/192/256; cipher mode gồm CBC, GCM, CTR và ECB.
+- Padding gồm NoPadding và PKCS5Padding (triển khai PKCS7 tương đương cho block AES). GCM và CTR chỉ hỗ trợ NoPadding.
+- Key và IV hỗ trợ UTF-8, HEX và BASE-64; có công cụ sinh key/IV ngẫu nhiên. Key UTF-8 được dùng trực tiếp làm byte, không phải mật khẩu và không qua KDF; key sau khi chuyển định dạng phải dài 16/24/32 byte. Tùy chọn Key size áp dụng cho chức năng tạo key. Key/IV sinh dạng UTF-8 dễ đọc có entropy thấp hơn HEX/Base-64; nên dùng HEX/Base-64 khi cần vật liệu khóa/ngẫu nhiên có đủ entropy.
+- Encode: ciphertext đầu ra Base64 hoặc Hex. Decode: ciphertext đầu vào Base64 hoặc Hex, kết quả Plaintext hoặc Base64.
+- ECB không sử dụng IV. CBC cần IV 16 byte; CTR cần counter 16 byte; GCM dùng nonce 12 byte. Với GCM, đầu ra gồm ciphertext nối tiếp authentication tag 16 byte.
+- Xử lý hoàn toàn offline. GCM xác thực ciphertext; tuyệt đối không tái sử dụng nonce với cùng key. Không tái sử dụng IV/counter với cùng key trong CTR. CBC/CTR/ECB không tự xác thực dữ liệu; ECB không nên dùng cho dữ liệu nhạy cảm.
+
 ### Compare String / JSON Diff
 - Compare String: so sánh hai bản văn bản theo dòng, từ hoặc ký tự; tô màu phần thêm và xóa, thống kê phần thêm/xóa/sửa.
 - Tùy chọn bỏ qua chữ hoa/thường, khoảng trắng và dòng trống; có thể đổi hai bên hoặc xóa nhanh nội dung.
@@ -134,3 +147,22 @@ python -m unittest discover -s tests -v
 ## Quyền riêng tư
 
 FileForge xử lý tệp trực tiếp trên máy tính. Ứng dụng không tải tệp của bạn lên máy chủ.
+## GitHub Actions và bản Windows EXE
+
+- Khi có commit mới được push lên nhánh `feature/encode`, workflow sẽ tự tạo Pull Request vào `main` nếu chưa có PR đang mở. Các commit tiếp theo sẽ tự cập nhật PR hiện tại.
+- Workflow **Build Windows EXE** chỉ chạy khi một Pull Request nhắm vào `main` được merge thành công.
+- Bản build là một tệp `FileForge.exe` độc lập, đã đóng gói assets và các dependency; workflow cũng tạo tệp checksum SHA-256.
+- Tải tại GitHub → Actions → Build Windows EXE → chọn lần chạy thành công → Artifacts → `FileForge-Windows-EXE-PR-...`.
+- Artifact được giữ trong 30 ngày. Tải ZIP artifact và giải nén để lấy `FileForge.exe`.
+
+
+### Cho phép workflow tự tạo Pull Request
+
+Nếu workflow `Auto Pull Request to main` báo lỗi `GitHub Actions is not permitted to create or approve pull requests`, hãy bật quyền một lần trong repository:
+
+1. Mở **Settings → Actions → General**.
+2. Kéo xuống **Workflow permissions**.
+3. Bật **Allow GitHub Actions to create and approve pull requests** và lưu lại.
+4. Vào **Actions → Auto Pull Request to main**, chọn lần chạy bị lỗi và bấm **Re-run jobs**.
+
+Workflow chỉ tạo PR từ `feature/encode` vào `main`; nếu đã có PR đang mở thì không tạo trùng.

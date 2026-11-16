@@ -3,7 +3,7 @@ import unittest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import QEventLoop, QThread, QTimer
+from PySide6.QtCore import QEventLoop, QThread, QTimer, Qt
 from PySide6.QtWidgets import QApplication, QListView
 
 from main import JSONTreeWidget, MainWindow, StyledComboBox, TextTaskWorker
@@ -31,14 +31,14 @@ class UISmokeTests(unittest.TestCase):
         window.show()
         self.app.processEvents()
 
-        self.assertEqual(window.tabs.count(), 6)
-        window.tabs.setCurrentIndex(3)
+        self.assertEqual(window.tabs.count(), 8)
+        window.tabs.setCurrentIndex(1)
         self.app.processEvents()
         self.assertEqual(window.mode, "text")
         self.assertTrue(window.text_panel.isVisible())
         self.assertFalse(window.drop_area.isVisible())
 
-        window.tabs.setCurrentIndex(0)
+        window.tabs.setCurrentIndex(7)
         self.app.processEvents()
         self.assertEqual(window.mode, "zip")
         self.assertTrue(window.drop_area.isVisible())
@@ -157,8 +157,8 @@ class UISmokeTests(unittest.TestCase):
         window.show()
         self.app.processEvents()
 
-        self.assertEqual(window.tabs.count(), 6)
-        window.tabs.setCurrentIndex(4)
+        self.assertEqual(window.tabs.count(), 8)
+        window.tabs.setCurrentIndex(2)
         self.app.processEvents()
         self.assertEqual(window.mode, "compare")
         self.assertTrue(window.compare_panel.isVisible())
@@ -187,8 +187,8 @@ class UISmokeTests(unittest.TestCase):
         window = MainWindow()
         window.show()
         self.app.processEvents()
-        self.assertEqual(window.tabs.count(), 6)
-        window.tabs.setCurrentIndex(5)
+        self.assertEqual(window.tabs.count(), 8)
+        window.tabs.setCurrentIndex(3)
         self.app.processEvents()
         self.assertEqual(window.mode, "curl")
         self.assertTrue(window.curl_panel.isVisible())
@@ -211,7 +211,7 @@ class UISmokeTests(unittest.TestCase):
         window = MainWindow()
         window.show()
         self.app.processEvents()
-        window.tabs.setCurrentIndex(5)
+        window.tabs.setCurrentIndex(3)
         window.curl_input.setPlainText(
             "METHOD: POST\\nURL\\nhttps://example.com/api\\nHEADERS\\n"
             "Content-Type: application/json"
@@ -253,6 +253,82 @@ class UISmokeTests(unittest.TestCase):
         self.assertEqual(errors, [])
         self.assertEqual(len(results), 1)
         self.assertEqual(len(results[0]["input_json"]["payload"]), 150000)
+
+
+    def test_url_and_aes_tabs_are_available_and_switch_cleanly(self):
+        window = MainWindow()
+        window.show()
+        self.app.processEvents()
+        self.assertEqual(window.tabs.count(), 8)
+
+        window.tabs.setCurrentIndex(4)
+        self.app.processEvents()
+        self.assertEqual(window.mode, "url")
+        self.assertTrue(window.url_panel.isVisible())
+        window.url_input.setPlainText("https://example.com/a path")
+        window.encode_url()
+        self.assertIn("%20", window.url_output.toPlainText())
+
+        window.tabs.setCurrentIndex(5)
+        self.app.processEvents()
+        self.assertEqual(window.mode, "aes")
+        self.assertTrue(window.aes_panel.isVisible())
+        self.assertEqual(window.aes_action_tabs.count(), 2)
+        self.assertEqual(
+            [window.aes_mode.itemText(i) for i in range(window.aes_mode.count())],
+            ["CBC", "GCM", "CTR", "ECB"],
+        )
+        self.assertEqual(
+            [window.aes_key_format.itemText(i) for i in range(window.aes_key_format.count())],
+            ["UTF-8", "HEX", "BASE-64"],
+        )
+        self.assertEqual(window.aes_key_format.currentText(), "BASE-64")
+        self.assertEqual(window.aes_iv_format.currentText(), "BASE-64")
+
+        window.generate_aes_key_ui()
+        window.aes_encode_input.setPlainText("FileForge test")
+        window.encrypt_aes_ui()
+        encrypted = window.aes_encode_output.toPlainText()
+        self.assertTrue(encrypted)
+
+        window.aes_action_tabs.setCurrentIndex(1)
+        window.aes_decode_input.setPlainText(encrypted)
+        window.decrypt_aes_ui()
+        self.assertEqual(window.aes_decode_output.toPlainText(), "FileForge test")
+
+        window.close()
+        window.deleteLater()
+        self.app.processEvents()
+
+
+    def test_tabs_are_horizontally_scrollable_without_navigation_arrows(self):
+        window = MainWindow()
+        window.resize(520, 700)
+        window.show()
+        self.app.processEvents()
+
+        self.assertEqual(window.tabs.tab_bar.tabText(0), "Chuyển ảnh")
+        self.assertEqual(window.tabs.tab_bar.tabText(6), "Giải nén")
+        self.assertEqual(window.tabs.tab_bar.tabText(7), "Nén ZIP")
+        self.assertFalse(window.tabs.tab_bar.usesScrollButtons())
+        window.tabs.scroll_area.setFixedWidth(420)
+        self.app.processEvents()
+        self.assertEqual(
+            window.tabs.scroll_area.horizontalScrollBarPolicy(),
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff,
+        )
+        self.assertGreater(
+            window.tabs.tab_bar.width(),
+            window.tabs.scroll_area.viewport().width(),
+        )
+
+        window.tabs.setCurrentIndex(7)
+        self.app.processEvents()
+        self.assertEqual(window.tabs.currentIndex(), 7)
+        self.assertGreater(window.tabs.scroll_area.horizontalScrollBar().value(), 0)
+        window.close()
+        window.deleteLater()
+        self.app.processEvents()
 
 
 if __name__ == "__main__":
