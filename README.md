@@ -45,10 +45,10 @@
 - Giao diện tách thành hai màn hình riêng: Encode và Decode.
 - AES-128/192/256; cipher mode gồm CBC, GCM, CTR và ECB.
 - Padding gồm NoPadding và PKCS5Padding (triển khai PKCS7 tương đương cho block AES). GCM và CTR chỉ hỗ trợ NoPadding.
-- Key và IV hỗ trợ UTF-8, HEX và BASE-64; có công cụ sinh key/IV ngẫu nhiên.
+- Key và IV hỗ trợ UTF-8, HEX và BASE-64; có công cụ sinh key/IV ngẫu nhiên. Key UTF-8 được dùng trực tiếp làm byte, không phải mật khẩu và không qua KDF; key sau khi chuyển định dạng phải dài 16/24/32 byte. Tùy chọn Key size áp dụng cho chức năng tạo key.
 - Encode: ciphertext đầu ra Base64 hoặc Hex. Decode: ciphertext đầu vào Base64 hoặc Hex, kết quả Plaintext hoặc Base64.
-- ECB không sử dụng IV. CBC cần IV 16 byte; CTR cần counter 16 byte; GCM khuyến nghị nonce 12 byte.
-- Xử lý hoàn toàn offline. GCM xác thực ciphertext; không tái sử dụng nonce với cùng key. CBC/CTR/ECB không tự xác thực dữ liệu; ECB không nên dùng cho dữ liệu nhạy cảm.
+- ECB không sử dụng IV. CBC cần IV 16 byte; CTR cần counter 16 byte; GCM dùng nonce 12 byte. Với GCM, đầu ra gồm ciphertext nối tiếp authentication tag 16 byte.
+- Xử lý hoàn toàn offline. GCM xác thực ciphertext; tuyệt đối không tái sử dụng nonce với cùng key. Không tái sử dụng IV/counter với cùng key trong CTR. CBC/CTR/ECB không tự xác thực dữ liệu; ECB không nên dùng cho dữ liệu nhạy cảm.
 
 ### Compare String / JSON Diff
 - Compare String: so sánh hai bản văn bản theo dòng, từ hoặc ký tự; tô màu phần thêm và xóa, thống kê phần thêm/xóa/sửa.
