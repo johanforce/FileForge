@@ -68,6 +68,8 @@
 - Nhật ký chẩn đoán được xoay vòng tại thư mục dữ liệu ứng dụng: tối đa khoảng 2 MB mỗi tệp, giữ 3 bản sao cũ. Mở nhanh từ **FileForge → Mở thư mục nhật ký**.
 - Khi hệ điều hành cung cấp system tray, FileForge có biểu tượng khay với các lệnh mở ứng dụng, mở lịch sử và thoát. Có thể bật thu nhỏ xuống khay cùng thông báo trong Tùy chọn.
 - Khi tác vụ nền đang chạy, FileForge ngăn thoát ứng dụng để tránh đóng QThread chưa hoàn tất.
+- Tác vụ nén ZIP, giải nén và chuyển ảnh có nút **Hủy tác vụ**. Cơ chế hủy hợp tác không dùng `QThread.terminate()`; ZIP dùng tệp tạm và chỉ thay thế đầu ra khi hoàn tất, giải nén dọn thư mục tạm của archive đang xử lý, chuyển ảnh chỉ công bố ảnh sau khi ghi xong.
+- Khi hủy một batch, các mục đã hoàn tất được giữ lại và ghi vào lịch sử với trạng thái **Đã hủy**; mục đang xử lý được dọn phần tạm. Việc dừng một ảnh đang được Pillow giải mã/ghi hoặc một thao tác hệ thống đang chạy có thể chờ đến điểm kiểm tra hủy kế tiếp.
 
 ## Hiển thị cấu trúc và hiệu năng
 - Hai vùng đầu vào/đầu ra, có thể chuyển giữa văn bản và cây JSON.
