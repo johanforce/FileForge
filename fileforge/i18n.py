@@ -51,6 +51,8 @@ ENGLISH = {
     "＋  Thêm tệp": "＋  Add files",
     "＋  Thêm thư mục": "＋  Add folder",
     "Chuyển ảnh": "Image conversion",
+    "Nén ZIP": "Create ZIP",
+    "Giải nén": "Extract",
     "So sánh": "Compare",
     "Tệp đã chọn": "Selected files",
     "0 tệp  ·  0 B": "0 files  ·  0 B",
@@ -306,7 +308,6 @@ ENGLISH = {
     "Thành công": "Success",
     "Xóa toàn bộ lịch sử tác vụ trên máy này? Thao tác này không xóa các tệp kết quả.": "Clear all task history on this computer? This will not delete output files.",
     "Giấy phép": "License",
-    "Giấy phép": "License",
     "Giới thiệu": "About",
 }
 
@@ -336,30 +337,37 @@ def translate_text(value: Any) -> Any:
 
 
 def _translate_dynamic(value: str) -> str:
-    """Translate common status strings that contain runtime values."""
+    """Translate common status and task labels that contain runtime values."""
     if _current_language == "vi":
         reversed_patterns = (
-            (r"^(\\d[\\d,]*) files  ·  (.+)$", r"\\1 tệp  ·  \\2"),
-            (r"^([\\d,]+) characters$", r"\\1 ký tự"),
-            (r"^Completed · ([\\d,]+) input characters$", r"Hoàn tất · \\1 ký tự đầu vào"),
-            (r"^([\\d,]+) input characters → ([\\d,]+) output characters$", r"\\1 ký tự đầu vào → \\2 ký tự đầu ra"),
-            (r"^([\\d,]+) → ([\\d,]+) characters$", r"\\1 → \\2 ký tự"),
-            (r"^Created (.+)$", r"Đã tạo \\1"),
-            (r"^Loaded (.+)$", r"Đã nạp \\1"),
-            (r"^Creating ZIP: (.+)$", r"Đang nén: \\1"),
-            (r"^Extracting: (.+)$", r"Đang giải nén: \\1"),
-            (r"^Converting: (.+)$", r"Đang chuyển đổi: \\1"),
-            (r"^Error: (.+)$", r"Lỗi: \\1"),
-            (r"^Could not encode: (.+)$", r"Không thể encode: \\1"),
-            (r"^Could not decode: (.+)$", r"Không thể decode: \\1"),
-            (r"^Recognized (.+)$", r"Đã nhận diện \\1"),
-            (r"^(\\d+) recent task\\(s\\)$", r"\\1 tác vụ gần đây"),
-            (r"^(\\d+)/(\\d+) task\\(s\\)$", r"\\1/\\2 tác vụ"),
+            (r"^(\d[\d,]*) files  ·  (.+)$", r"\1 tệp  ·  \2"),
+            (r"^([\d,]+) characters$", r"\1 ký tự"),
+            (r"^Completed · ([\d,]+) input characters$", r"Hoàn tất · \1 ký tự đầu vào"),
+            (r"^([\d,]+) input characters → ([\d,]+) output characters$", r"\1 ký tự đầu vào → \2 ký tự đầu ra"),
+            (r"^([\d,]+) → ([\d,]+) characters$", r"\1 → \2 ký tự"),
+            (r"^Created (.+)$", r"Đã tạo \1"),
+            (r"^Loaded (.+)$", r"Đã nạp \1"),
+            (r"^Creating ZIP: (.+)$", r"Đang nén: \1"),
+            (r"^Extracting: (.+)$", r"Đang giải nén: \1"),
+            (r"^Converting: (.+)$", r"Đang chuyển đổi: \1"),
+            (r"^Error: (.+)$", r"Lỗi: \1"),
+            (r"^Could not encode: (.+)$", r"Không thể encode: \1"),
+            (r"^Could not decode: (.+)$", r"Không thể decode: \1"),
+            (r"^Recognized (.+)$", r"Đã nhận diện \1"),
+            (r"^Process data: (.+)$", r"Xử lý dữ liệu: \1"),
+            (r"^Completed (\d+) item\(s\)$", r"Hoàn tất \1 mục"),
+            (r"^Successfully extracted (\d+) ZIP file\(s\)\.$", r"Đã giải nén thành công \1 tệp ZIP."),
+            (r"^Successfully converted (\d+) image\(s\)\.$", r"Đã chuyển đổi thành công \1 ảnh."),
+            (r"^([\d,.]+) seconds$", r"\1 giây"),
+            (r"^(\d+) recent task\(s\)$", r"\1 tác vụ gần đây"),
+            (r"^(\d+)/(\d+) task\(s\)$", r"\1/\2 tác vụ"),
+            (r"^Task cancelled · kept (\d+) completed result\(s\)$", r"Đã hủy tác vụ · giữ lại \1 kết quả đã hoàn tất"),
         )
         for pattern, replacement in reversed_patterns:
             if re.match(pattern, value):
                 return re.sub(pattern, replacement, value)
         return _REVERSE.get(value, value)
+
     patterns = (
         (r"^(\d[\d,]*) tệp  ·  (.+)$", r"\1 files  ·  \2"),
         (r"^([\d,]+) ký tự$", r"\1 characters"),
@@ -375,15 +383,19 @@ def _translate_dynamic(value: str) -> str:
         (r"^Không thể encode: (.+)$", r"Could not encode: \1"),
         (r"^Không thể decode: (.+)$", r"Could not decode: \1"),
         (r"^Đã nhận diện (.+)$", r"Recognized \1"),
-        (r"^Đã hủy tác vụ · giữ lại (\d+) kết quả đã hoàn tất$", r"Task cancelled · kept \1 completed result(s)"),
+        (r"^Xử lý dữ liệu: (.+)$", r"Process data: \1"),
+        (r"^Hoàn tất (\d+) mục$", r"Completed \1 item(s)"),
+        (r"^Đã giải nén thành công (\d+) tệp ZIP\.$", r"Successfully extracted \1 ZIP file(s)."),
+        (r"^Đã chuyển đổi thành công (\d+) ảnh\.$", r"Successfully converted \1 image(s)."),
+        (r"^([\d,.]+) giây$", r"\1 seconds"),
         (r"^(\d+) tác vụ gần đây$", r"\1 recent task(s)"),
         (r"^(\d+)/(\d+) tác vụ$", r"\1/\2 task(s)"),
+        (r"^Đã hủy tác vụ · giữ lại (\d+) kết quả đã hoàn tất$", r"Task cancelled · kept \1 completed result(s)"),
     )
     for pattern, replacement in patterns:
         if re.match(pattern, value):
             return re.sub(pattern, replacement, value)
     return value
-
 
 def translate_object_tree(root: QWidget) -> None:
     """Translate visible widget text, placeholders, menus, tabs, and table headers."""
