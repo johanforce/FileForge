@@ -149,6 +149,8 @@ class PreferencesDialog(QDialog):
         )
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
+        buttons.button(QDialogButtonBox.StandardButton.Save).setText(translate_text("Lưu"))
+        buttons.button(QDialogButtonBox.StandardButton.Cancel).setText(translate_text("Hủy"))
         root.addWidget(buttons)
         translate_object_tree(self)
 
