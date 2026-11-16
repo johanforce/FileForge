@@ -155,3 +155,14 @@ FileForge xử lý tệp trực tiếp trên máy tính. Ứng dụng không t�
 - Tải tại GitHub → Actions → Build Windows EXE → chọn lần chạy thành công → Artifacts → `FileForge-Windows-EXE-PR-...`.
 - Artifact được giữ trong 30 ngày. Tải ZIP artifact và giải nén để lấy `FileForge.exe`.
 
+
+### Cho phép workflow tự tạo Pull Request
+
+Nếu workflow `Auto Pull Request to main` báo lỗi `GitHub Actions is not permitted to create or approve pull requests`, hãy bật quyền một lần trong repository:
+
+1. Mở **Settings → Actions → General**.
+2. Kéo xuống **Workflow permissions**.
+3. Bật **Allow GitHub Actions to create and approve pull requests** và lưu lại.
+4. Vào **Actions → Auto Pull Request to main**, chọn lần chạy bị lỗi và bấm **Re-run jobs**.
+
+Workflow chỉ tạo PR từ `feature/encode` vào `main`; nếu đã có PR đang mở thì không tạo trùng.
