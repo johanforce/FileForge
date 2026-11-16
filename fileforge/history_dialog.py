@@ -21,6 +21,8 @@ from PySide6.QtWidgets import (
 
 from fileforge.app_services import TaskHistoryStore
 
+from fileforge.i18n import translate_object_tree, translate_text
+
 
 class TaskHistoryDialog(QDialog):
     """Show recent file-processing tasks and allow opening their output folders."""
@@ -89,6 +91,7 @@ class TaskHistoryDialog(QDialog):
         footer.addWidget(close_button)
         root.addLayout(footer)
 
+        translate_object_tree(self)
         self.reload()
 
     def reload(self):
@@ -103,16 +106,17 @@ class TaskHistoryDialog(QDialog):
                 "failed": "Thất bại",
                 "cancelled": "Đã hủy",
             }.get(record["status"], record["status"])
+            status_text = translate_text(status_text)
             duration = record["duration_ms"]
-            duration_text = f"{duration / 1000:.1f} giây" if duration >= 1000 else f"{duration} ms"
+            duration_text = translate_text(f"{duration / 1000:.1f} giây") if duration >= 1000 else f"{duration} ms"
             summary = record["summary"] or record["error_message"] or "—"
             values = [
                 record["created_at"].replace("T", " "),
-                record["operation"],
+                translate_text(record["operation"]),
                 status_text,
                 str(record["input_count"]),
                 duration_text,
-                summary,
+                translate_text(summary),
             ]
             for column, value in enumerate(values):
                 item = QTableWidgetItem(value)
@@ -120,7 +124,7 @@ class TaskHistoryDialog(QDialog):
                 item.setToolTip(value)
                 self.table.setItem(row, column, item)
 
-        self.count_label.setText(f"{len(self.records)} tác vụ gần đây")
+        self.count_label.setText(translate_text(f"{len(self.records)} tác vụ gần đây"))
         self.apply_filter(self.search.text())
 
     def apply_filter(self, query: str):
@@ -129,7 +133,7 @@ class TaskHistoryDialog(QDialog):
         for row, record in enumerate(self.records):
             searchable = " ".join(
                 [
-                    record["operation"],
+                    translate_text(record["operation"]),
                     record["status"],
                     {
                         "success": "Thành công",
@@ -137,8 +141,8 @@ class TaskHistoryDialog(QDialog):
                         "failed": "Thất bại",
                         "cancelled": "Đã hủy",
                     }.get(record["status"], record["status"]),
-                    record["summary"],
-                    record["error_message"],
+                    translate_text(record["summary"]),
+                    translate_text(record["error_message"]),
                     *record["input_names"],
                 ]
             ).casefold()
@@ -146,7 +150,7 @@ class TaskHistoryDialog(QDialog):
             self.table.setRowHidden(row, not matches)
             visible += int(matches)
         self.count_label.setText(
-            f"{visible}/{len(self.records)} tác vụ" if needle else f"{len(self.records)} tác vụ gần đây"
+            translate_text(f"{visible}/{len(self.records)} tác vụ") if needle else translate_text(f"{len(self.records)} tác vụ gần đây")
         )
 
     def _selected_record(self) -> dict | None:
@@ -172,9 +176,10 @@ class TaskHistoryDialog(QDialog):
             "failed": "Thất bại",
             "cancelled": "Đã hủy",
         }.get(record["status"], record["status"])
+        status_text = translate_text(status_text)
         lines = [
             f"Tác vụ: {record['operation']}",
-            f"Trạng thái: {status_text}",
+            (f"Status: {status_text}" if status_text != "Thành công" or translate_text("Thành công") == "Success" else f"Trạng thái: {status_text}"),
             f"Thời gian: {record['created_at'].replace('T', ' ')}",
             f"Số tệp đầu vào: {record['input_count']}",
             f"Thời lượng: {record['duration_ms']} ms",
@@ -219,8 +224,8 @@ class TaskHistoryDialog(QDialog):
             return
         answer = QMessageBox.question(
             self,
-            "Xóa lịch sử",
-            "Xóa toàn bộ lịch sử tác vụ trên máy này? Thao tác này không xóa các tệp kết quả.",
+            translate_text("Xóa lịch sử"),
+            translate_text("Xóa toàn bộ lịch sử tác vụ trên máy này? Thao tác này không xóa các tệp kết quả."),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )
