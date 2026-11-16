@@ -61,6 +61,27 @@ class ArchiveTests(unittest.TestCase):
             self.assertEqual(target.read_bytes(), b"previous archive")
             self.assertEqual(list(root.glob(".out.zip.*.tmp")), [])
 
+    def test_cancellation_during_validation_keeps_previous_archive(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "large.bin"
+            source.write_bytes(b"y" * (3 * 1024 * 1024))
+            target = root / "out.zip"
+            target.write_bytes(b"existing")
+            calls = 0
+
+            def cancel_during_validation():
+                nonlocal calls
+                calls += 1
+                return calls >= 10
+
+            with self.assertRaises(TaskCancelledError):
+                create_zip(
+                    [source], target, is_cancelled=cancel_during_validation
+                )
+
+            self.assertEqual(target.read_bytes(), b"existing")
+            self.assertEqual(list(root.glob(".out.zip.*.tmp")), [])
     def test_existing_destination_is_preserved_on_failure(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
