@@ -42,7 +42,7 @@ class ExtractionTests(unittest.TestCase):
             def cancel_during_copy():
                 nonlocal calls
                 calls += 1
-                return calls >= 5
+                return calls >= 6
 
             with self.assertRaises(TaskCancelledError):
                 extract_archives(
