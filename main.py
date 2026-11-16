@@ -2161,20 +2161,16 @@ class MainWindow(QMainWindow):
         layout.addLayout(iv_row)
 
         self.aes_action_tabs = QTabWidget()
-        self.aes_encode_input, self.aes_encode_output = self._build_aes_editor_page(
+        encode_page, self.aes_encode_input, self.aes_encode_output = self._build_aes_editor_page(
             "PLAINTEXT INPUT", "Nhập plaintext cần mã hóa…",
-            "CIPHERTEXT OUTPUT", "Ciphertext sẽ xuất hiện ở đây…",
+            "CIPHERTEXT OUTPUT", "Ciphertext sẽ xuất hiện ở đây…", "encode",
         )
-        self.aes_decode_input, self.aes_decode_output = self._build_aes_editor_page(
+        decode_page, self.aes_decode_input, self.aes_decode_output = self._build_aes_editor_page(
             "CIPHERTEXT INPUT", "Dán ciphertext cần giải mã…",
-            "PLAINTEXT / BASE64 OUTPUT", "Kết quả giải mã sẽ xuất hiện ở đây…",
+            "PLAINTEXT / BASE64 OUTPUT", "Kết quả giải mã sẽ xuất hiện ở đây…", "decode",
         )
-        self.aes_action_tabs.addTab(self._build_aes_action_page(
-            self.aes_encode_input, self.aes_encode_output, "encode"
-        ), "1. Encode")
-        self.aes_action_tabs.addTab(self._build_aes_action_page(
-            self.aes_decode_input, self.aes_decode_output, "decode"
-        ), "2. Decode")
+        self.aes_action_tabs.addTab(encode_page, "1. Encode")
+        self.aes_action_tabs.addTab(decode_page, "2. Decode")
         layout.addWidget(self.aes_action_tabs, 1)
 
         self.aes_status = QLabel("Sẵn sàng")
@@ -2195,7 +2191,7 @@ class MainWindow(QMainWindow):
         self.on_aes_mode_changed(self.aes_mode.currentText())
         return panel
 
-    def _build_aes_editor_page(self, input_title, input_placeholder, output_title, output_placeholder):
+    def _build_aes_editor_page(self, input_title, input_placeholder, output_title, output_placeholder, action):
         page = QWidget()
         layout = QVBoxLayout(page)
         layout.setContentsMargins(4, 8, 4, 4)
@@ -2227,17 +2223,6 @@ class MainWindow(QMainWindow):
         editors.addWidget(left)
         editors.addWidget(right)
         layout.addWidget(editors, 1)
-        return input_editor, output_editor
-
-    def _build_aes_action_page(self, input_editor, output_editor, action):
-        page = QWidget()
-        layout = QVBoxLayout(page)
-        layout.setContentsMargins(0, 0, 0, 0)
-        # Editors are already parented into their dedicated splitter; this page
-        # receives the splitter through the editor's container.
-        editor_splitter = input_editor.parentWidget().parentWidget()
-        if isinstance(editor_splitter, QSplitter):
-            layout.addWidget(editor_splitter, 1)
 
         options = QHBoxLayout()
         if action == "encode":
@@ -2271,7 +2256,7 @@ class MainWindow(QMainWindow):
         options.addWidget(copy)
         options.addWidget(clear)
         layout.addLayout(options)
-        return page
+        return page, input_editor, output_editor
 
     def _aes_key_format_value(self):
         return self.aes_key_format.currentText()
