@@ -25,7 +25,7 @@ class UISmokeTests(unittest.TestCase):
         failures = []
         worker.cancelled.connect(lambda outputs: (cancelled.append(outputs), loop.quit()))
         worker.failed.connect(lambda message: (failures.append(message), loop.quit()))
-        worker.start()
+        QTimer.singleShot(0, worker.start)
         QTimer.singleShot(5000, loop.quit)
         loop.exec()
         worker.wait()
