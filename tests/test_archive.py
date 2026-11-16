@@ -51,7 +51,7 @@ class ArchiveTests(unittest.TestCase):
             def cancel_after_first_chunk():
                 nonlocal calls
                 calls += 1
-                return calls >= 3
+                return calls >= 4
 
             with self.assertRaises(TaskCancelledError):
                 create_zip(
