@@ -1,0 +1,72 @@
+import tempfile
+import unittest
+from pathlib import Path
+
+os_imported = False
+try:
+    import os
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    os_imported = True
+except Exception:
+    pass
+
+from PySide6.QtCore import QSettings
+from PySide6.QtWidgets import QApplication
+
+from fileforge.preferences import PreferencesDialog
+
+
+class PreferencesDialogTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.app = QApplication.instance() or QApplication([])
+
+    def test_preferences_load_and_save(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            settings_path = str(Path(temp_dir) / "settings.ini")
+            settings = QSettings(settings_path, QSettings.Format.IniFormat)
+            settings.setValue("preferences/restore_session", False)
+            settings.setValue("preferences/remember_last_directory", True)
+            settings.setValue("preferences/remember_operation_options", False)
+
+            output_dir = Path(temp_dir) / "output"
+            output_dir.mkdir()
+
+            dialog = PreferencesDialog(settings)
+            self.assertFalse(dialog.restore_session.isChecked())
+            self.assertTrue(dialog.remember_last_directory.isChecked())
+            self.assertFalse(dialog.remember_operation_options.isChecked())
+
+            dialog.restore_session.setChecked(True)
+            dialog.remember_last_directory.setChecked(False)
+            dialog.remember_operation_options.setChecked(True)
+            dialog.output_directory.setText(str(output_dir))
+            dialog.save_to_settings()
+
+            self.assertTrue(settings.value("preferences/restore_session", type=bool))
+            self.assertFalse(
+                settings.value("preferences/remember_last_directory", type=bool)
+            )
+            self.assertTrue(
+                settings.value("preferences/remember_operation_options", type=bool)
+            )
+            self.assertEqual(
+                settings.value("paths/default_output_directory"), str(output_dir)
+            )
+            dialog.close()
+
+    def test_invalid_output_directory_is_not_saved(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            settings = QSettings(
+                str(Path(temp_dir) / "settings.ini"), QSettings.Format.IniFormat
+            )
+            settings.setValue("paths/default_output_directory", "")
+            dialog = PreferencesDialog(settings)
+            dialog.output_directory.setText(str(Path(temp_dir) / "missing"))
+            dialog.save_to_settings()
+            self.assertEqual(settings.value("paths/default_output_directory"), "")
+            dialog.close()
+
+
+if __name__ == "__main__":
+    unittest.main()
