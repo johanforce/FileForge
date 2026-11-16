@@ -26,7 +26,12 @@ from PySide6.QtWidgets import (
 class PreferencesDialog(QDialog):
     """Small preferences window for persistent desktop-app behavior."""
 
-    def __init__(self, settings: QSettings, parent: QWidget | None = None):
+    def __init__(
+        self,
+        settings: QSettings,
+        parent: QWidget | None = None,
+        tray_available: bool = True,
+    ):
         super().__init__(parent)
         self.settings = settings
         self.setWindowTitle("Tùy chọn FileForge")
@@ -66,6 +71,28 @@ class PreferencesDialog(QDialog):
         )
         self.remember_operation_options.setWordWrap(True)
         root.addWidget(self.remember_operation_options)
+
+        self.minimize_to_tray = QCheckBox(
+            "Thu nhỏ FileForge xuống khay hệ thống khi nhấn nút đóng"
+        )
+        self.minimize_to_tray.setChecked(
+            settings.value("preferences/minimize_to_tray", False, type=bool)
+        )
+        self.minimize_to_tray.setEnabled(tray_available)
+        if not tray_available:
+            self.minimize_to_tray.setToolTip(
+                "Khay hệ thống hiện không khả dụng trên môi trường này."
+            )
+        root.addWidget(self.minimize_to_tray)
+
+        self.show_notifications = QCheckBox(
+            "Hiển thị thông báo khi tác vụ hoàn tất trong lúc ứng dụng đang ẩn"
+        )
+        self.show_notifications.setChecked(
+            settings.value("preferences/show_notifications", True, type=bool)
+        )
+        self.show_notifications.setEnabled(tray_available)
+        root.addWidget(self.show_notifications)
 
         root.addSpacing(2)
         output_label = QLabel("Thư mục đầu ra ưu tiên")
@@ -138,6 +165,14 @@ class PreferencesDialog(QDialog):
         self.settings.setValue(
             "preferences/remember_operation_options",
             self.remember_operation_options.isChecked(),
+        )
+        self.settings.setValue(
+            "preferences/minimize_to_tray",
+            self.minimize_to_tray.isChecked(),
+        )
+        self.settings.setValue(
+            "preferences/show_notifications",
+            self.show_notifications.isChecked(),
         )
         self.settings.setValue(
             "paths/default_output_directory",
