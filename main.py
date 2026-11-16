@@ -519,7 +519,7 @@ class TaskWorker(QThread):
     progress = Signal(int, int, str)
     completed = Signal(object)
     failed = Signal(str)
-    cancelled = Signal()
+    cancelled = Signal(object)
 
     def __init__(
         self,
@@ -582,8 +582,8 @@ class TaskWorker(QThread):
                 })
             else:
                 raise ValueError("Tác vụ không hợp lệ.")
-        except TaskCancelledError:
-            self.cancelled.emit()
+        except TaskCancelledError as exc:
+            self.cancelled.emit(exc.completed_outputs)
         except Exception as exc:
             self.failed.emit(str(exc))
 
@@ -3351,14 +3351,30 @@ class MainWindow(QMainWindow):
         self.logger.info("User requested task cancellation")
         worker.request_cancel()
 
-    def on_task_cancelled(self):
-        self.progress_text.setText("Đã hủy tác vụ · kết quả dở dang đã được loại bỏ")
-        self.logger.info("Task cancelled by user")
+    def on_task_cancelled(self, completed_outputs: list[str] | None = None):
+        outputs = completed_outputs or []
+        count = len(outputs)
+        if count:
+            self.progress_text.setText(
+                f"Đã hủy tác vụ · giữ lại {count} kết quả đã hoàn tất"
+            )
+            summary = f"Đã hủy · giữ lại {count} kết quả đã hoàn tất"
+            notification = f"Đã giữ lại {count} kết quả hoàn tất"
+        else:
+            self.progress_text.setText(
+                "Đã hủy tác vụ · phần kết quả đang xử lý đã được dọn"
+            )
+            summary = "Đã hủy theo yêu cầu người dùng"
+            notification = "FileForge đã dọn phần kết quả tạm"
+        self.logger.info(
+            "Task cancelled by user; completed_outputs=%d", count
+        )
         self._record_task_history(
             "cancelled",
-            summary="Đã hủy theo yêu cầu người dùng",
+            outputs=outputs,
+            summary=summary,
         )
-        self._notify_user("Đã hủy tác vụ", "FileForge đã dọn phần kết quả tạm")
+        self._notify_user("Đã hủy tác vụ", notification)
 
     def remove_selected(self):
         selected_paths = set()
