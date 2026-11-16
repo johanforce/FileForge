@@ -2313,10 +2313,9 @@ class MainWindow(QMainWindow):
         self.curl_input = QPlainTextEdit()
         self.curl_input.setObjectName("CodeEditor")
         self.curl_input.setPlaceholderText(
-            "Dán request từ DevTools…\n\n"
-            "Ví dụ:\n**METHOD: POST**\n**URL**\n"
-            "**https://example.com/api**\n**HEADERS**\n"
-            "**x-user-sub:**\n**giá-trị-nguyên-văn**"
+            translate_text(
+                "Dán HTTP request từ DevTools hoặc tài liệu vào đây. Ví dụ: POST https://example.com/api"
+            )
         )
         request_layout.addWidget(self.curl_input, 3)
 
@@ -2972,7 +2971,7 @@ class MainWindow(QMainWindow):
                 target["editor"].setPlainText(content)
                 self.json_diff_status.setText(translate_text(f"Đã nạp {Path(path).name}"))
             except (OSError, UnicodeError) as exc:
-                QMessageBox.warning(self, "Không thể mở JSON", str(exc))
+                QMessageBox.warning(self, translate_text("Không thể mở JSON"), str(exc))
         combo.blockSignals(True)
         combo.setCurrentIndex(0)
         combo.blockSignals(False)
@@ -2993,7 +2992,7 @@ class MainWindow(QMainWindow):
                 ignore_blank_lines=self.string_ignore_blank.isChecked(),
             )
         except ValueError as exc:
-            QMessageBox.warning(self, "Không thể so sánh", str(exc))
+            QMessageBox.warning(self, translate_text("Không thể so sánh"), str(exc))
             return
 
         style = """
@@ -3040,7 +3039,7 @@ class MainWindow(QMainWindow):
                 ignore_array_order=bool(self.json_array_mode.currentData()),
             )
         except ValueError as exc:
-            QMessageBox.warning(self, "JSON không hợp lệ", str(exc))
+            QMessageBox.warning(self, translate_text("JSON không hợp lệ"), str(exc))
             self.json_diff_status.setText(translate_text("Kiểm tra JSON đầu vào"))
             return
 
