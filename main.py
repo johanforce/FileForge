@@ -5,6 +5,7 @@ import difflib
 import html
 import re
 import sys
+import threading
 import time
 import traceback
 from pathlib import Path
@@ -101,6 +102,7 @@ from fileforge.app_services import (
     install_exception_logging,
 )
 from fileforge.history_dialog import TaskHistoryDialog
+from fileforge.task_control import TaskCancelledError
 
 
 # --------------------------------------------------------------------------
@@ -517,6 +519,7 @@ class TaskWorker(QThread):
     progress = Signal(int, int, str)
     completed = Signal(object)
     failed = Signal(str)
+    cancelled = Signal()
 
     def __init__(
         self,
@@ -534,6 +537,11 @@ class TaskWorker(QThread):
         self.compression = compression
         self.output_format = output_format
         self.quality = quality
+        self._cancel_event = threading.Event()
+
+    def request_cancel(self):
+        """Request a cooperative stop; never forcibly terminate the worker thread."""
+        self._cancel_event.set()
 
     def run(self):
         try:
@@ -543,6 +551,7 @@ class TaskWorker(QThread):
                     self.destination,
                     self.compression,
                     lambda done, total, name: self.progress.emit(done, total, name),
+                    is_cancelled=self._cancel_event.is_set,
                 )
                 self.completed.emit({"mode": "zip", "path": str(result)})
             elif self.mode == "extract":
@@ -550,6 +559,7 @@ class TaskWorker(QThread):
                     self.paths,
                     self.destination,
                     lambda done, total, name: self.progress.emit(done, total, name),
+                    is_cancelled=self._cancel_event.is_set,
                 )
                 self.completed.emit({
                     "mode": "extract",
@@ -563,6 +573,7 @@ class TaskWorker(QThread):
                     self.output_format,
                     self.quality,
                     lambda done, total, name: self.progress.emit(done, total, name),
+                    is_cancelled=self._cancel_event.is_set,
                 )
                 self.completed.emit({
                     "mode": "image",
@@ -571,6 +582,8 @@ class TaskWorker(QThread):
                 })
             else:
                 raise ValueError("Tác vụ không hợp lệ.")
+        except TaskCancelledError:
+            self.cancelled.emit()
         except Exception as exc:
             self.failed.emit(str(exc))
 
@@ -1166,13 +1179,19 @@ class MainWindow(QMainWindow):
         progress_layout = QVBoxLayout(self.progress_area)
         progress_layout.setContentsMargins(0, 2, 0, 0)
         progress_layout.setSpacing(5)
+        progress_header = QHBoxLayout()
         self.progress_text = QLabel("Đang chuẩn bị…")
         self.progress_text.setObjectName("Muted")
+        progress_header.addWidget(self.progress_text, 1)
+        self.cancel_task_btn = QPushButton("Hủy tác vụ")
+        self.cancel_task_btn.clicked.connect(self.request_cancel_task)
+        self.cancel_task_btn.hide()
+        progress_header.addWidget(self.cancel_task_btn)
+        progress_layout.addLayout(progress_header)
         self.progress = QProgressBar()
         self.progress.setRange(0, 100)
         self.progress.setValue(0)
         self.progress.setTextVisible(False)
-        progress_layout.addWidget(self.progress_text)
         progress_layout.addWidget(self.progress)
         action_layout.addWidget(self.progress_area)
         self.progress_area.hide()
@@ -3310,6 +3329,8 @@ class MainWindow(QMainWindow):
 
     def set_busy(self, busy: bool):
         self.busy = busy
+        self.cancel_task_btn.setVisible(busy)
+        self.cancel_task_btn.setEnabled(busy)
         self.tabs.setEnabled(not busy)
         self.add_files_btn.setEnabled(not busy)
         self.add_folder_btn.setEnabled(not busy)
@@ -3320,6 +3341,24 @@ class MainWindow(QMainWindow):
         )
         self.table.setEnabled(not busy)
         self.update_controls()
+
+    def request_cancel_task(self):
+        worker = self.worker
+        if not self.busy or worker is None or not worker.isRunning():
+            return
+        self.cancel_task_btn.setEnabled(False)
+        self.progress_text.setText("Đang yêu cầu hủy an toàn…")
+        self.logger.info("User requested task cancellation")
+        worker.request_cancel()
+
+    def on_task_cancelled(self):
+        self.progress_text.setText("Đã hủy tác vụ · kết quả dở dang đã được loại bỏ")
+        self.logger.info("Task cancelled by user")
+        self._record_task_history(
+            "cancelled",
+            summary="Đã hủy theo yêu cầu người dùng",
+        )
+        self._notify_user("Đã hủy tác vụ", "FileForge đã dọn phần kết quả tạm")
 
     def remove_selected(self):
         selected_paths = set()
@@ -3414,6 +3453,7 @@ class MainWindow(QMainWindow):
         self.worker.progress.connect(self.on_progress)
         self.worker.completed.connect(self.on_completed)
         self.worker.failed.connect(self.on_failure)
+        self.worker.cancelled.connect(self.on_task_cancelled)
         self.worker.finished.connect(lambda: self.set_busy(False))
         self.worker.start()
 
