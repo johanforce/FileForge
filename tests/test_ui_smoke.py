@@ -3,7 +3,7 @@ import unittest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import QEventLoop, QThread, QTimer, Qt, Qt
+from PySide6.QtCore import QEventLoop, QThread, QTimer, Qt
 from PySide6.QtWidgets import QApplication, QListView
 
 from main import JSONTreeWidget, MainWindow, StyledComboBox, TextTaskWorker
@@ -38,7 +38,7 @@ class UISmokeTests(unittest.TestCase):
         self.assertTrue(window.text_panel.isVisible())
         self.assertFalse(window.drop_area.isVisible())
 
-        window.tabs.setCurrentIndex(5)
+        window.tabs.setCurrentIndex(7)
         self.app.processEvents()
         self.assertEqual(window.mode, "zip")
         self.assertTrue(window.drop_area.isVisible())
@@ -269,7 +269,7 @@ class UISmokeTests(unittest.TestCase):
         window.encode_url()
         self.assertIn("%20", window.url_output.toPlainText())
 
-        window.tabs.setCurrentIndex(7)
+        window.tabs.setCurrentIndex(5)
         self.app.processEvents()
         self.assertEqual(window.mode, "aes")
         self.assertTrue(window.aes_panel.isVisible())
@@ -297,9 +297,11 @@ class UISmokeTests(unittest.TestCase):
         self.assertEqual(window.tabs.tab_bar.tabText(6), "Giải nén")
         self.assertEqual(window.tabs.tab_bar.tabText(7), "Nén ZIP")
         self.assertFalse(window.tabs.tab_bar.usesScrollButtons())
+        window.tabs.scroll_area.setFixedWidth(420)
+        self.app.processEvents()
         self.assertEqual(
             window.tabs.scroll_area.horizontalScrollBarPolicy(),
-            window.tabs.scroll_area.horizontalScrollBarPolicy().ScrollBarAlwaysOff,
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff,
         )
         self.assertGreater(
             window.tabs.tab_bar.width(),
