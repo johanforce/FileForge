@@ -2120,11 +2120,13 @@ class MainWindow(QMainWindow):
         self.aes_key_bits.setCurrentText("256")
         self.aes_key_format = StyledComboBox()
         self.aes_key_format.addItems(["UTF-8", "HEX", "BASE-64"])
+        self.aes_key_format.setCurrentText("BASE-64")
         self.aes_key_bits.setToolTip("Chỉ dùng khi bấm Tạo key. Key nhập tay được xác định kích thước từ số byte thực tế.")
         self.aes_key_format.setToolTip("UTF-8 được dùng trực tiếp làm byte của key, không phải mật khẩu qua KDF. Key sau khi giải mã định dạng phải dài 16, 24 hoặc 32 byte. Key sinh dạng UTF-8 dễ đọc có entropy thấp hơn HEX/Base-64; nên chọn HEX/Base-64 để có key ngẫu nhiên đủ entropy.")
         self.aes_iv_format.setToolTip("IV/nonce UTF-8 được dùng trực tiếp làm byte. IV sinh dạng UTF-8 dễ đọc có entropy thấp hơn HEX/Base-64; nên chọn HEX/Base-64 để có IV ngẫu nhiên đủ entropy.")
         self.aes_iv_format = StyledComboBox()
         self.aes_iv_format.addItems(["UTF-8", "HEX", "BASE-64"])
+        self.aes_iv_format.setCurrentText("BASE-64")
         for label, widget in (
             ("Cipher mode", self.aes_mode), ("Padding", self.aes_padding),
             ("Key size (tạo key)", self.aes_key_bits), ("Key format", self.aes_key_format),
