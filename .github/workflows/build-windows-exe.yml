@@ -34,6 +34,15 @@ jobs:
           python -m pip install -r requirements.txt
           python -m pip install "pyinstaller>=6.10,<7"
 
+      - name: Verify build inputs
+        shell: pwsh
+        run: |
+          foreach ($path in @("main.py", "assets/logo.ico", "assets/logo.png", "assets/wordmark.png")) {
+            if (-not (Test-Path $path)) {
+              throw "Required build input is missing: $path"
+            }
+          }
+
       - name: Build standalone Windows executable
         run: >
           pyinstaller
@@ -46,7 +55,6 @@ jobs:
           --add-data "assets;assets"
           --distpath dist
           --workpath build
-          --specpath build
           main.py
 
       - name: Verify executable and write SHA-256 checksum
