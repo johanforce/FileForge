@@ -255,5 +255,37 @@ class UISmokeTests(unittest.TestCase):
         self.assertEqual(len(results[0]["input_json"]["payload"]), 150000)
 
 
+    def test_url_and_aes_tabs_are_available_and_switch_cleanly(self):
+        window = MainWindow()
+        window.show()
+        self.app.processEvents()
+        self.assertEqual(window.tabs.count(), 8)
+
+        window.tabs.setCurrentIndex(6)
+        self.app.processEvents()
+        self.assertEqual(window.mode, "url")
+        self.assertTrue(window.url_panel.isVisible())
+        window.url_input.setPlainText("https://example.com/a path")
+        window.encode_url()
+        self.assertIn("%20", window.url_output.toPlainText())
+
+        window.tabs.setCurrentIndex(7)
+        self.app.processEvents()
+        self.assertEqual(window.mode, "aes")
+        self.assertTrue(window.aes_panel.isVisible())
+        window.generate_aes_key_ui()
+        window.aes_input.setPlainText("FileForge test")
+        window.encrypt_aes_ui()
+        encrypted = window.aes_output.toPlainText()
+        self.assertTrue(encrypted)
+        window.aes_input.setPlainText(encrypted)
+        window.decrypt_aes_ui()
+        self.assertEqual(window.aes_output.toPlainText(), "FileForge test")
+
+        window.close()
+        window.deleteLater()
+        self.app.processEvents()
+
+
 if __name__ == "__main__":
     unittest.main()
