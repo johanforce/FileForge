@@ -60,6 +60,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QProgressBar,
     QScrollArea,
+    QTabBar,
     QPushButton,
     QSlider,
     QStackedWidget,
