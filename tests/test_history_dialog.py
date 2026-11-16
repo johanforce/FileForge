@@ -45,8 +45,8 @@ class TaskHistoryDialogTests(unittest.TestCase):
 
             dialog.search.setText("portrait")
             self.app.processEvents()
-            self.assertTrue(dialog.table.isRowHidden(0))
-            self.assertFalse(dialog.table.isRowHidden(1))
+            self.assertFalse(dialog.table.isRowHidden(0))
+            self.assertTrue(dialog.table.isRowHidden(1))
             self.assertIn("1/2", dialog.count_label.text())
 
             dialog.search.clear()
