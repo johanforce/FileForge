@@ -171,9 +171,16 @@ def create_zip(
         # Validate before replacing a possibly existing output.
         raise_if_cancelled(is_cancelled)
         with zipfile.ZipFile(temp_path, "r") as archive:
-            bad_member = archive.testzip()
-            if bad_member is not None:
-                raise zipfile.BadZipFile(f"Archive validation failed: {bad_member}")
+            for member in archive.infolist():
+                raise_if_cancelled(is_cancelled)
+                if member.is_dir():
+                    continue
+                with archive.open(member, "r") as member_stream:
+                    while True:
+                        raise_if_cancelled(is_cancelled)
+                        chunk = member_stream.read(1024 * 1024)
+                        if not chunk:
+                            break
         raise_if_cancelled(is_cancelled)
         try:
             os.chmod(temp_path, 0o644)  # mkstemp creates 0600
