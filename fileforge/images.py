@@ -72,8 +72,8 @@ def convert_images(
     errors: list[tuple[str, str]] = []
 
     for index, source in enumerate(paths, start=1):
-        raise_if_cancelled(is_cancelled)
         try:
+            raise_if_cancelled(is_cancelled)
             if source.suffix.lower() not in SUPPORTED_IMAGE_EXTENSIONS:
                 raise ValueError("Định dạng ảnh đầu vào chưa được hỗ trợ.")
 
