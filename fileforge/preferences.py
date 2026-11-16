@@ -92,7 +92,6 @@ class PreferencesDialog(QDialog):
         self.remember_operation_options.setChecked(
             settings.value("preferences/remember_operation_options", True, type=bool)
         )
-        self.remember_operation_options.setWordWrap(True)
         root.addWidget(self.remember_operation_options)
 
         self.minimize_to_tray = QCheckBox(
