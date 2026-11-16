@@ -59,7 +59,17 @@
 - Mỗi ô JSON có dropdown chọn dán nội dung hoặc mở tệp `.json`; lỗi parse nêu dòng và cột.
 - So sánh chạy hoàn toàn offline trong ứng dụng, không tải dữ liệu lên máy chủ.
 
-### Hiển thị cấu trúc và hiệu năng
+### Trải nghiệm ứng dụng desktop
+
+- Menu **FileForge** cung cấp Tùy chọn, Lịch sử tác vụ, mở thư mục cấu hình, mở thư mục nhật ký và Thoát.
+- Tùy chọn có thể ghi nhớ cửa sổ/tab gần nhất, thư mục đầu vào/đầu ra, thư mục đầu ra ưu tiên và các thiết lập xử lý ảnh/ZIP.
+- Lịch sử tác vụ SQLite lưu tối đa 500 tác vụ gần nhất, cho phép tìm kiếm, xem trạng thái, thời lượng và mở thư mục kết quả.
+- Lịch sử chỉ lưu tên tệp đầu vào và đường dẫn đầu ra, không lưu nội dung tệp, nội dung editor hoặc khóa AES/plaintext/ciphertext. Người dùng có thể xóa toàn bộ lịch sử trong cửa sổ Lịch sử tác vụ.
+- Nhật ký chẩn đoán được xoay vòng tại thư mục dữ liệu ứng dụng: tối đa khoảng 2 MB mỗi tệp, giữ 3 bản sao cũ. Mở nhanh từ **FileForge → Mở thư mục nhật ký**.
+- Khi hệ điều hành cung cấp system tray, FileForge có biểu tượng khay với các lệnh mở ứng dụng, mở lịch sử và thoát. Có thể bật thu nhỏ xuống khay cùng thông báo trong Tùy chọn.
+- Khi tác vụ nền đang chạy, FileForge ngăn thoát ứng dụng để tránh đóng QThread chưa hoàn tất.
+
+## Hiển thị cấu trúc và hiệu năng
 - Hai vùng đầu vào/đầu ra, có thể chuyển giữa văn bản và cây JSON.
 - Object và array có thể bung/thu theo từng cấp.
 - Cây JSON nạp con theo yêu cầu, hiển thị 300 mục mỗi trang và có thể nạp tiếp; không bỏ mất field trong JSON lớn.
