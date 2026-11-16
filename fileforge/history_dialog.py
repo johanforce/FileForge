@@ -101,6 +101,7 @@ class TaskHistoryDialog(QDialog):
                 "success": "Thành công",
                 "partial": "Một phần",
                 "failed": "Thất bại",
+                "cancelled": "Đã hủy",
             }.get(record["status"], record["status"])
             duration = record["duration_ms"]
             duration_text = f"{duration / 1000:.1f} giây" if duration >= 1000 else f"{duration} ms"
@@ -134,6 +135,7 @@ class TaskHistoryDialog(QDialog):
                         "success": "Thành công",
                         "partial": "Một phần",
                         "failed": "Thất bại",
+                        "cancelled": "Đã hủy",
                     }.get(record["status"], record["status"]),
                     record["summary"],
                     record["error_message"],
@@ -168,6 +170,7 @@ class TaskHistoryDialog(QDialog):
             "success": "Thành công",
             "partial": "Một phần",
             "failed": "Thất bại",
+            "cancelled": "Đã hủy",
         }.get(record["status"], record["status"])
         lines = [
             f"Tác vụ: {record['operation']}",
