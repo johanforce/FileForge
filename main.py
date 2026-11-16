@@ -2120,11 +2120,13 @@ class MainWindow(QMainWindow):
         self.aes_key_bits.setCurrentText("256")
         self.aes_key_format = StyledComboBox()
         self.aes_key_format.addItems(["UTF-8", "HEX", "BASE-64"])
+        self.aes_key_bits.setToolTip("Chỉ dùng khi bấm Tạo key. Key nhập tay được xác định kích thước từ số byte thực tế.")
+        self.aes_key_format.setToolTip("UTF-8 được dùng trực tiếp làm byte của key, không phải mật khẩu qua KDF. Key sau khi giải mã định dạng phải dài 16, 24 hoặc 32 byte.")
         self.aes_iv_format = StyledComboBox()
         self.aes_iv_format.addItems(["UTF-8", "HEX", "BASE-64"])
         for label, widget in (
             ("Cipher mode", self.aes_mode), ("Padding", self.aes_padding),
-            ("Key size", self.aes_key_bits), ("Key format", self.aes_key_format),
+            ("Key size (tạo key)", self.aes_key_bits), ("Key format", self.aes_key_format),
             ("IV format", self.aes_iv_format),
         ):
             settings.addWidget(QLabel(label))
@@ -2179,8 +2181,9 @@ class MainWindow(QMainWindow):
 
         warning = QLabel(
             "GCM có xác thực và nên được ưu tiên; GCM/CTR chỉ dùng NoPadding. "
-            "CBC/ECB hỗ trợ NoPadding hoặc PKCS5Padding (PKCS7 cho block AES). "
-            "ECB không dùng IV và không an toàn cho dữ liệu thực tế; CBC/CTR cũng không tự xác thực ciphertext."
+            "Không tái sử dụng nonce/IV với cùng key trong GCM hoặc CTR. GCM xuất ciphertext kèm tag xác thực 16 byte ở cuối. "
+            "CBC/ECB hỗ trợ NoPadding hoặc PKCS5Padding (PKCS7 cho block AES); CBC/CTR/ECB không tự xác thực ciphertext. "
+            "ECB không phù hợp cho dữ liệu nhạy cảm. Key UTF-8 là byte trực tiếp, không qua KDF."
         )
         warning.setObjectName("Muted")
         warning.setWordWrap(True)
