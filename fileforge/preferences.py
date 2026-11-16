@@ -13,7 +13,6 @@ from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QFileDialog,
-    QFormLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -111,17 +110,24 @@ class PreferencesDialog(QDialog):
         if selected:
             self.output_directory.setText(selected)
 
-    def save_to_settings(self) -> None:
-        """Persist the accepted values after the dialog has been accepted."""
+    def is_output_directory_valid(self) -> bool:
         output_directory = self.output_directory.text().strip()
-        if output_directory and not Path(output_directory).expanduser().is_dir():
+        return not output_directory or Path(output_directory).expanduser().is_dir()
+
+    def accept(self):
+        if not self.is_output_directory_valid():
             QMessageBox.warning(
                 self,
                 "Thư mục không hợp lệ",
                 "Thư mục đầu ra đã chọn không tồn tại hoặc không thể truy cập.",
             )
+            self.output_directory.setFocus()
             return
+        super().accept()
 
+    def save_to_settings(self) -> None:
+        """Persist the values after the dialog has passed validation."""
+        output_directory = self.output_directory.text().strip()
         self.settings.setValue(
             "preferences/restore_session", self.restore_session.isChecked()
         )
