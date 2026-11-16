@@ -62,6 +62,7 @@ from PySide6.QtWidgets import (
     QFileIconProvider,
     QFrame,
     QHeaderView,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
     QMainWindow,
