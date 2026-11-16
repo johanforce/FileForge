@@ -53,6 +53,23 @@ class CryptoUtilsTests(unittest.TestCase):
                 self.assertEqual(base64.b64decode(decoded), b"format test")
 
 
+
+    def test_decrypt_plaintext_output_format_label(self):
+        key = generate_aes_key(128, "BASE-64")
+        iv = generate_iv("GCM", "BASE-64")
+        encrypted, _ = aes_encrypt(
+            "Plaintext output works", key, "BASE-64", "GCM", iv,
+            "BASE-64", "BASE-64", "NoPadding",
+        )
+        self.assertEqual(
+            aes_decrypt(
+                encrypted, key, "BASE-64", "GCM", iv,
+                "BASE-64", "BASE-64", "NoPadding", "Plaintext",
+            ),
+            "Plaintext output works",
+        )
+
+
     def test_generated_aes_key_sizes_in_all_formats(self):
         for bits in (128, 192, 256):
             for key_format in ("UTF-8", "HEX", "BASE-64"):
