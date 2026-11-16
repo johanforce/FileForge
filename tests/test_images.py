@@ -64,6 +64,33 @@ class ImageConversionTests(unittest.TestCase):
             self.assertEqual(list(output_dir.glob("*.jpg")), [])
             self.assertEqual(list(output_dir.glob(".fileforge-image-*")), [])
 
+    def test_cancellation_reports_images_already_published(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            first = root / "first.png"
+            second = root / "second.png"
+            Image.new("RGB", (8, 8), (10, 20, 30)).save(first)
+            Image.new("RGB", (8, 8), (40, 50, 60)).save(second)
+            output_dir = root / "out"
+            calls = 0
+
+            def cancel_before_second_image():
+                nonlocal calls
+                calls += 1
+                return calls >= 5
+
+            with self.assertRaises(TaskCancelledError) as raised:
+                convert_images(
+                    [first, second], output_dir, "JPG", 90,
+                    is_cancelled=cancel_before_second_image,
+                )
+
+            self.assertEqual(len(raised.exception.completed_outputs), 1)
+            completed = Path(raised.exception.completed_outputs[0])
+            self.assertTrue(completed.is_file())
+            self.assertEqual(completed.name, "first.jpg")
+            self.assertEqual(list(output_dir.glob("*.jpg")), [completed])
+
     def test_continues_after_corrupt_image_and_avoids_overwrite(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
