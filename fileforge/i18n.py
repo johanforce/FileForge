@@ -130,6 +130,7 @@ ENGLISH = {
     "HTTP REQUEST  ·  METHOD / URL / HEADERS": "HTTP REQUEST  ·  METHOD / URL / HEADERS",
     "Dán request từ DevTools…\n\n": "Paste a request from DevTools…\n\n",
     "REQUEST BODY / PAYLOAD  ·  TÙY CHỌN": "REQUEST BODY / PAYLOAD  ·  OPTIONAL",
+    "Dán HTTP request từ DevTools hoặc tài liệu vào đây. Ví dụ: POST https://example.com/api": "Paste an HTTP request from DevTools or documentation here. Example: POST https://example.com/api",
     "Dán JSON / protobuf / form body ở đây. Nội dung được giữ nguyên và đưa vào --data-raw…": "Paste a JSON, protobuf, or form body here. The content is preserved and passed to --data-raw…",
     "Lệnh cURL sẽ xuất hiện ở đây…": "The cURL command will appear here…",
     "Chuyển thành cURL  →": "Convert to cURL  →",
