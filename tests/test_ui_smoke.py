@@ -32,13 +32,13 @@ class UISmokeTests(unittest.TestCase):
         self.app.processEvents()
 
         self.assertEqual(window.tabs.count(), 8)
-        window.tabs.setCurrentIndex(3)
+        window.tabs.setCurrentIndex(1)
         self.app.processEvents()
         self.assertEqual(window.mode, "text")
         self.assertTrue(window.text_panel.isVisible())
         self.assertFalse(window.drop_area.isVisible())
 
-        window.tabs.setCurrentIndex(0)
+        window.tabs.setCurrentIndex(5)
         self.app.processEvents()
         self.assertEqual(window.mode, "zip")
         self.assertTrue(window.drop_area.isVisible())
@@ -158,7 +158,7 @@ class UISmokeTests(unittest.TestCase):
         self.app.processEvents()
 
         self.assertEqual(window.tabs.count(), 8)
-        window.tabs.setCurrentIndex(4)
+        window.tabs.setCurrentIndex(2)
         self.app.processEvents()
         self.assertEqual(window.mode, "compare")
         self.assertTrue(window.compare_panel.isVisible())
@@ -188,7 +188,7 @@ class UISmokeTests(unittest.TestCase):
         window.show()
         self.app.processEvents()
         self.assertEqual(window.tabs.count(), 8)
-        window.tabs.setCurrentIndex(5)
+        window.tabs.setCurrentIndex(3)
         self.app.processEvents()
         self.assertEqual(window.mode, "curl")
         self.assertTrue(window.curl_panel.isVisible())
@@ -211,7 +211,7 @@ class UISmokeTests(unittest.TestCase):
         window = MainWindow()
         window.show()
         self.app.processEvents()
-        window.tabs.setCurrentIndex(5)
+        window.tabs.setCurrentIndex(3)
         window.curl_input.setPlainText(
             "METHOD: POST\\nURL\\nhttps://example.com/api\\nHEADERS\\n"
             "Content-Type: application/json"
@@ -261,7 +261,7 @@ class UISmokeTests(unittest.TestCase):
         self.app.processEvents()
         self.assertEqual(window.tabs.count(), 8)
 
-        window.tabs.setCurrentIndex(6)
+        window.tabs.setCurrentIndex(4)
         self.app.processEvents()
         self.assertEqual(window.mode, "url")
         self.assertTrue(window.url_panel.isVisible())
