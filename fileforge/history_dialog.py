@@ -21,7 +21,7 @@ from PySide6.QtWidgets import (
 
 from fileforge.app_services import TaskHistoryStore
 
-from fileforge.i18n import translate_object_tree, translate_text
+from fileforge.i18n import get_language, translate_object_tree, translate_text
 
 
 class TaskHistoryDialog(QDialog):
@@ -177,24 +177,46 @@ class TaskHistoryDialog(QDialog):
             "cancelled": "Đã hủy",
         }.get(record["status"], record["status"])
         status_text = translate_text(status_text)
-        lines = [
-            f"Tác vụ: {record['operation']}",
-            (f"Status: {status_text}" if status_text != "Thành công" or translate_text("Thành công") == "Success" else f"Trạng thái: {status_text}"),
-            f"Thời gian: {record['created_at'].replace('T', ' ')}",
-            f"Số tệp đầu vào: {record['input_count']}",
-            f"Thời lượng: {record['duration_ms']} ms",
-            "",
-            "Tệp đầu vào:",
-            *(record["input_names"] or ["Không có"]),
-            "",
-            f"Thư mục đầu ra: {record['output_folder'] or 'Không có'}",
-        ]
-        if record["output_paths"]:
-            lines.extend(["", "Kết quả:", *record["output_paths"]])
-        if record["summary"]:
-            lines.extend(["", "Tóm tắt:", record["summary"]])
-        if record["error_message"]:
-            lines.extend(["", "Chi tiết lỗi:", record["error_message"]])
+        if get_language() == "en":
+            lines = [
+                f"Task: {translate_text(record['operation'])}",
+                f"Status: {status_text}",
+                f"Time: {record['created_at'].replace('T', ' ')}",
+                f"Input files: {record['input_count']}",
+                f"Duration: {record['duration_ms']} ms",
+                "",
+                "Input files:",
+                *(record["input_names"] or ["None"]),
+                "",
+                f"Output folder: {record['output_folder'] or 'None'}",
+            ]
+            if record["output_paths"]:
+                lines.extend(["", "Results:", *record["output_paths"]])
+            if record["summary"]:
+                lines.extend(["", "Summary:", translate_text(record["summary"])])
+            if record["error_message"]:
+                lines.extend(["", "Error details:", translate_text(record["error_message"])])
+            title = "Task details"
+        else:
+            lines = [
+                f"Tác vụ: {record['operation']}",
+                f"Trạng thái: {status_text}",
+                f"Thời gian: {record['created_at'].replace('T', ' ')}",
+                f"Số tệp đầu vào: {record['input_count']}",
+                f"Thời lượng: {record['duration_ms']} ms",
+                "",
+                "Tệp đầu vào:",
+                *(record["input_names"] or ["Không có"]),
+                "",
+                f"Thư mục đầu ra: {record['output_folder'] or 'Không có'}",
+            ]
+            if record["output_paths"]:
+                lines.extend(["", "Kết quả:", *record["output_paths"]])
+            if record["summary"]:
+                lines.extend(["", "Tóm tắt:", record["summary"]])
+            if record["error_message"]:
+                lines.extend(["", "Chi tiết lỗi:", record["error_message"]])
+            title = "Chi tiết tác vụ"
         QMessageBox.information(
             self, "Chi tiết tác vụ", "\n".join(lines)
         )
