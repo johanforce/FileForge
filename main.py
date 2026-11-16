@@ -1278,7 +1278,7 @@ class MainWindow(QMainWindow):
         help_menu.addAction(license_action)
 
     def _show_document_dialog(self, title: str, filename: str) -> None:
-        document_path = Path(__file__).resolve().parent.parent / filename
+        document_path = resource_path("assets", filename)
         try:
             document_text = document_path.read_text(encoding="utf-8")
         except OSError as exc:
