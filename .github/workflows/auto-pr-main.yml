@@ -40,7 +40,9 @@ jobs:
               return;
             }
 
-            const { data: pullRequest } = await github.rest.pulls.create({
+            let pullRequest;
+            try {
+              const { data } = await github.rest.pulls.create({
               owner,
               repo,
               head: "feature/encode",
@@ -56,8 +58,16 @@ jobs:
                 "After this PR is merged into `main`, open Actions → Build Windows EXE → the successful run → Artifacts to download `FileForge.exe`.",
                 "",
                 "Please review the checks and changes before merging."
-              ].join("\\n"),
-              maintainer_can_modify: true
-            });
+              ].join("\n"),
+                maintainer_can_modify: true
+              });
+              pullRequest = data;
+            } catch (error) {
+              if (error.status === 403 && String(error.message).includes("not permitted")) {
+                core.setFailed("GitHub is blocking Actions from creating pull requests. Enable Settings → Actions → General → Workflow permissions → Allow GitHub Actions to create and approve pull requests, then re-run this workflow.");
+                return;
+              }
+              throw error;
+            }
 
             core.notice(`Created PR #${pullRequest.number}: ${pullRequest.html_url}`);
