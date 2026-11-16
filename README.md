@@ -147,3 +147,11 @@ python -m unittest discover -s tests -v
 ## Quyền riêng tư
 
 FileForge xử lý tệp trực tiếp trên máy tính. Ứng dụng không tải tệp của bạn lên máy chủ.
+## GitHub Actions và bản Windows EXE
+
+- Khi có commit mới được push lên nhánh `feature/encode`, workflow sẽ tự tạo Pull Request vào `main` nếu chưa có PR đang mở. Các commit tiếp theo sẽ tự cập nhật PR hiện tại.
+- Workflow **Build Windows EXE** chỉ chạy khi một Pull Request nhắm vào `main` được merge thành công.
+- Bản build là một tệp `FileForge.exe` độc lập, đã đóng gói assets và các dependency; workflow cũng tạo tệp checksum SHA-256.
+- Tải tại GitHub → Actions → Build Windows EXE → chọn lần chạy thành công → Artifacts → `FileForge-Windows-EXE-PR-...`.
+- Artifact được giữ trong 30 ngày. Tải ZIP artifact và giải nén để lấy `FileForge.exe`.
+
