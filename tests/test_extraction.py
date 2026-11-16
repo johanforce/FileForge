@@ -51,6 +51,34 @@ class ExtractionTests(unittest.TestCase):
 
             self.assertEqual(list(destination.iterdir()), [])
 
+    def test_cancellation_reports_archives_already_extracted(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            first = root / "first.zip"
+            second = root / "second.zip"
+            with zipfile.ZipFile(first, "w") as archive:
+                archive.writestr("first.txt", "first")
+            with zipfile.ZipFile(second, "w") as archive:
+                archive.writestr("second.txt", "second")
+            destination = root / "out"
+            calls = 0
+
+            def cancel_before_second_archive():
+                nonlocal calls
+                calls += 1
+                return calls >= 8
+
+            with self.assertRaises(TaskCancelledError) as raised:
+                extract_archives(
+                    [first, second], destination,
+                    is_cancelled=cancel_before_second_archive,
+                )
+
+            self.assertEqual(len(raised.exception.completed_outputs), 1)
+            completed_folder = Path(raised.exception.completed_outputs[0])
+            self.assertTrue((completed_folder / "first.txt").is_file())
+            self.assertEqual([p.name for p in destination.iterdir()], ["first"])
+
     def test_rejects_parent_directory_traversal(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
