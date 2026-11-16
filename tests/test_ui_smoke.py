@@ -287,5 +287,33 @@ class UISmokeTests(unittest.TestCase):
         self.app.processEvents()
 
 
+    def test_tabs_are_horizontally_scrollable_without_navigation_arrows(self):
+        window = MainWindow()
+        window.resize(520, 700)
+        window.show()
+        self.app.processEvents()
+
+        self.assertEqual(window.tabs.tab_bar.tabText(0), "Chuyển ảnh")
+        self.assertEqual(window.tabs.tab_bar.tabText(6), "Giải nén")
+        self.assertEqual(window.tabs.tab_bar.tabText(7), "Nén ZIP")
+        self.assertFalse(window.tabs.tab_bar.usesScrollButtons())
+        self.assertEqual(
+            window.tabs.scroll_area.horizontalScrollBarPolicy(),
+            window.tabs.scroll_area.horizontalScrollBarPolicy().ScrollBarAlwaysOff,
+        )
+        self.assertGreater(
+            window.tabs.tab_bar.width(),
+            window.tabs.scroll_area.viewport().width(),
+        )
+
+        window.tabs.setCurrentIndex(7)
+        self.app.processEvents()
+        self.assertEqual(window.tabs.currentIndex(), 7)
+        self.assertGreater(window.tabs.scroll_area.horizontalScrollBar().value(), 0)
+        window.close()
+        window.deleteLater()
+        self.app.processEvents()
+
+
 if __name__ == "__main__":
     unittest.main()
