@@ -78,7 +78,17 @@ Trình xem JSON:
 - Tác vụ ghi file ưu tiên ghi ra file tạm rồi thay thế/commit kết quả khi hoàn tất.
 - Giải nén kiểm tra đường dẫn từng member trước khi ghi ra đĩa.
 
-## 6. Trạng thái triển khai
+## 6. Trải nghiệm desktop và dữ liệu ứng dụng
+
+- Tùy chọn người dùng được lưu bằng QSettings: khôi phục cửa sổ/tab, thư mục gần nhất, thư mục đầu ra ưu tiên và tùy chọn nén/chuyển ảnh.
+- Lịch sử tác vụ lưu cục bộ bằng SQLite, hỗ trợ tìm kiếm, mở thư mục kết quả và xóa lịch sử; giới hạn mặc định 500 bản ghi gần nhất.
+- Lịch sử chỉ ghi metadata như tên tệp đầu vào, đường dẫn đầu ra, trạng thái và thời lượng. Không lưu nội dung tệp, nội dung editor, khóa AES hay plaintext/ciphertext.
+- Nhật ký chẩn đoán dùng RotatingFileHandler, mỗi log tối đa khoảng 2 MB và giữ tối đa 3 bản sao cũ.
+- Menu FileForge cho phép mở lịch sử, thư mục cấu hình và thư mục log.
+- System tray và thông báo hoàn tất được bật khi môi trường desktop hỗ trợ; người dùng có thể chọn thu nhỏ xuống khay khi đóng cửa sổ.
+- Khi có tác vụ nền đang chạy, yêu cầu thoát ứng dụng được từ chối để tránh hủy QThread đang hoạt động.
+
+## 7. Trạng thái triển khai
 
 - Nén ZIP: đã có.
 - Giải nén ZIP: đã có.
@@ -87,7 +97,7 @@ Trình xem JSON:
 - JSON → Model: đã triển khai, hỗ trợ dataclass, Pydantic v2 và TypeScript.
 - Đóng gói .app/.dmg cho macOS: chưa triển khai.
 
-## 7. Ngoài phạm vi hiện tại
+## 8. Ngoài phạm vi hiện tại
 
 - Convert PDF/Word/Excel.
 - Đồng bộ cloud hoặc upload file.
