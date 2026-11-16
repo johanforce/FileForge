@@ -2250,7 +2250,9 @@ class MainWindow(QMainWindow):
         editor.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
         editor.setTabStopDistance(28)
         editor.textChanged.connect(
-            lambda ed=editor, lbl=count: lbl.setText(f"{len(ed.toPlainText()):,} ký tự")
+            lambda ed=editor, lbl=count: lbl.setText(
+                translate_text(f"{len(ed.toPlainText()):,} ký tự")
+            )
         )
         layout.addWidget(editor, 1)
         return {"widget": pane, "editor": editor, "count": count}
@@ -3043,8 +3045,10 @@ class MainWindow(QMainWindow):
 
         self._json_diff_result = result
         self.json_diff_summary.setText(
-            f"{result['total']} khác biệt  ·  +{result['added']} thêm  ·  "
-            f"−{result['removed']} xóa  ·  ~{result['changed']} sửa"
+            translate_text(
+                f"{result['total']} khác biệt  ·  +{result['added']} thêm  ·  "
+                f"−{result['removed']} xóa  ·  ~{result['changed']} sửa"
+            )
         )
         self.json_diff_table.setRowCount(0)
         for diff in result["differences"]:
@@ -3297,7 +3301,7 @@ class MainWindow(QMainWindow):
             title = "Chọn tệp"
 
         files, _ = QFileDialog.getOpenFileNames(
-            self, title, self._input_start_directory(), file_filter
+            self, translate_text(title), self._input_start_directory(), translate_text(file_filter)
         )
         if files:
             self._remember_last_directory("paths/last_input_directory", Path(files[0]).parent)
@@ -3390,14 +3394,14 @@ class MainWindow(QMainWindow):
             self.progress_text.setText(
                 translate_text(f"Đã hủy tác vụ · giữ lại {count} kết quả đã hoàn tất")
             )
-            summary = f"Đã hủy · giữ lại {count} kết quả đã hoàn tất"
-            notification = f"Đã giữ lại {count} kết quả hoàn tất"
+            summary = translate_text(f"Đã hủy · giữ lại {count} kết quả đã hoàn tất")
+            notification = translate_text(f"Đã giữ lại {count} kết quả hoàn tất")
         else:
             self.progress_text.setText(
                 translate_text("Đã hủy tác vụ · phần kết quả đang xử lý đã được dọn")
             )
-            summary = "Đã hủy theo yêu cầu người dùng"
-            notification = "FileForge đã dọn phần kết quả tạm"
+            summary = translate_text("Đã hủy theo yêu cầu người dùng")
+            notification = translate_text("FileForge đã dọn phần kết quả tạm")
         self.logger.info(
             "Task cancelled by user; completed_outputs=%d", count
         )
@@ -3406,7 +3410,7 @@ class MainWindow(QMainWindow):
             outputs=outputs,
             summary=summary,
         )
-        self._notify_user("Đã hủy tác vụ", notification)
+        self._notify_user(translate_text("Đã hủy tác vụ"), notification)
 
     def remove_selected(self):
         selected_paths = set()
