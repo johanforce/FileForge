@@ -64,7 +64,7 @@ class TaskHistoryDialog(QDialog):
         self.table.verticalHeader().setVisible(False)
         self.table.horizontalHeader().setStretchLastSection(True)
         self.table.setSortingEnabled(False)
-        self.table.itemDoubleClicked.connect(lambda _item: self.open_selected_folder())
+        self.table.itemDoubleClicked.connect(lambda _item: self.show_selected_details())
         root.addWidget(self.table, 1)
 
         footer = QHBoxLayout()
@@ -73,6 +73,11 @@ class TaskHistoryDialog(QDialog):
         self.open_button.setEnabled(False)
         self.table.itemSelectionChanged.connect(self._update_actions)
         footer.addWidget(self.open_button)
+
+        self.details_button = QPushButton("Chi tiết")
+        self.details_button.clicked.connect(self.show_selected_details)
+        self.details_button.setEnabled(False)
+        footer.addWidget(self.details_button)
 
         self.clear_button = QPushButton("Xóa lịch sử")
         self.clear_button.clicked.connect(self.clear_history)
@@ -125,6 +130,11 @@ class TaskHistoryDialog(QDialog):
                 [
                     record["operation"],
                     record["status"],
+                    {
+                        "success": "Thành công",
+                        "partial": "Một phần",
+                        "failed": "Thất bại",
+                    }.get(record["status"], record["status"]),
                     record["summary"],
                     record["error_message"],
                     *record["input_names"],
@@ -148,6 +158,38 @@ class TaskHistoryDialog(QDialog):
         record = self._selected_record()
         folder = self._folder_for_record(record) if record else None
         self.open_button.setEnabled(bool(folder and folder.is_dir()))
+        self.details_button.setEnabled(record is not None)
+
+    def show_selected_details(self):
+        record = self._selected_record()
+        if not record:
+            return
+        status_text = {
+            "success": "Thành công",
+            "partial": "Một phần",
+            "failed": "Thất bại",
+        }.get(record["status"], record["status"])
+        lines = [
+            f"Tác vụ: {record['operation']}",
+            f"Trạng thái: {status_text}",
+            f"Thời gian: {record['created_at'].replace('T', ' ')}",
+            f"Số tệp đầu vào: {record['input_count']}",
+            f"Thời lượng: {record['duration_ms']} ms",
+            "",
+            "Tệp đầu vào:",
+            *(record["input_names"] or ["Không có"]),
+            "",
+            f"Thư mục đầu ra: {record['output_folder'] or 'Không có'}",
+        ]
+        if record["output_paths"]:
+            lines.extend(["", "Kết quả:", *record["output_paths"]])
+        if record["summary"]:
+            lines.extend(["", "Tóm tắt:", record["summary"]])
+        if record["error_message"]:
+            lines.extend(["", "Chi tiết lỗi:", record["error_message"]])
+        QMessageBox.information(
+            self, "Chi tiết tác vụ", "\\n".join(lines)
+        )
 
     @staticmethod
     def _folder_for_record(record: dict | None) -> Path | None:
