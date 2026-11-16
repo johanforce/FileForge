@@ -309,6 +309,32 @@ ENGLISH = {
     "Xóa toàn bộ lịch sử tác vụ trên máy này? Thao tác này không xóa các tệp kết quả.": "Clear all task history on this computer? This will not delete output files.",
     "Giấy phép": "License",
     "Giới thiệu": "About",
+    "Tùy chọn FileForge": "FileForge Preferences",
+    "Thiết lập cách FileForge ghi nhớ phiên làm việc và thư mục.": "Choose what FileForge remembers between sessions.",
+    "Khôi phục kích thước cửa sổ và công cụ đã mở lần trước": "Restore the previous window size and selected tool",
+    "Ghi nhớ thư mục gần nhất khi mở và lưu tệp": "Remember the last folder used to open and save files",
+    "Ghi nhớ tùy chọn xử lý gần nhất (mức nén, định dạng và chất lượng ảnh)": "Remember the last processing options (compression, format, and image quality)",
+    "Thu nhỏ FileForge xuống khay hệ thống khi nhấn nút đóng": "Minimize FileForge to the system tray when the close button is pressed",
+    "Khay hệ thống hiện không khả dụng trên môi trường này.": "The system tray is not available in this environment.",
+    "Hiển thị thông báo khi tác vụ hoàn tất trong lúc ứng dụng đang ẩn": "Show notifications when tasks finish while the app is hidden",
+    "Thư mục đầu ra ưu tiên": "Preferred output folder",
+    "Thư mục này được dùng làm vị trí gợi ý khi lưu ZIP hoặc giải nén/chuyển ảnh. Để trống để dùng thư mục gần nhất hoặc thư mục cá nhân.": "This folder is suggested when saving ZIP files or extracting/converting images. Leave it empty to use the last folder or your home folder.",
+    "Mặc định: thư mục gần nhất": "Default: last used folder",
+    "Duyệt…": "Browse…",
+    "Chọn thư mục đầu ra ưu tiên": "Choose preferred output folder",
+    "Thư mục không hợp lệ": "Invalid folder",
+    "Thư mục đầu ra đã chọn không tồn tại hoặc không thể truy cập.": "The selected output folder does not exist or cannot be accessed.",
+    "Chọn thư mục đầu ra": "Choose output folder",
+    "Lưu": "Save",
+    "Hủy": "Cancel",
+    "Đảo chiều chuyển đổi và đưa kết quả hiện tại về ô đầu vào": "Reverse the conversion direction and move the current result to the input",
+    "Đã xóa nội dung": "Content cleared",
+    "Đã đưa hai khung về tỷ lệ 50/50": "Restored the two panes to a 50/50 split",
+    "Đã nạp {filename}": "Loaded {filename}",
+    "Chọn tệp": "Select files",
+    "KÉT QUẢ": "RESULT",
+    "Tổng số": "Total",
+    "Giới thiệu": "About",
 }
 
 _REVERSE = {english: source for source, english in ENGLISH.items()}
@@ -340,6 +366,8 @@ def _translate_dynamic(value: str) -> str:
     """Translate common status and task labels that contain runtime values."""
     if _current_language == "vi":
         reversed_patterns = (
+            (r"^Added (\d+) · Removed (\d+) · Modified (\d+)$", r"Thêm \1 · Xóa \2 · Sửa \3"),
+            (r"^(\d+) differences  ·  \+(\d+) added  ·  −(\d+) removed  ·  ~(\d+) modified$", r"\1 khác biệt  ·  +\2 thêm  ·  −\3 xóa  ·  ~\4 sửa"),
             (r"^(\d[\d,]*) files  ·  (.+)$", r"\1 tệp  ·  \2"),
             (r"^([\d,]+) characters$", r"\1 ký tự"),
             (r"^Completed · ([\d,]+) input characters$", r"Hoàn tất · \1 ký tự đầu vào"),
@@ -369,6 +397,14 @@ def _translate_dynamic(value: str) -> str:
         return _REVERSE.get(value, value)
 
     patterns = (
+        (r"^(\d[\d,]*) tệp  ·  (.+)$", r"\1 files  ·  \2"),
+        (r"^([\d,]+) ký tự$", r"\1 characters"),
+        (r"^Hoàn tất · ([\d,]+) ký tự đầu vào$", r"Completed · \1 input characters"),
+        (r"^([\d,]+) ký tự đầu vào → ([\d,]+) ký tự đầu ra$", r"\1 input characters → \2 output characters"),
+        (r"^([\d,]+) → ([\d,]+) ký tự$", r"\1 → \2 characters"),
+        (r"^Thêm (\d+) · Xóa (\d+) · Sửa (\d+)$", r"Added \1 · Removed \2 · Modified \3"),
+        (r"^(\d+) khác biệt  ·  \+(\d+) thêm  ·  −(\d+) xóa  ·  ~(\d+) sửa$", r"\1 differences  ·  +\2 added  ·  −\3 removed  ·  ~\4 modified"),
+
         (r"^(\d[\d,]*) tệp  ·  (.+)$", r"\1 files  ·  \2"),
         (r"^([\d,]+) ký tự$", r"\1 characters"),
         (r"^Hoàn tất · ([\d,]+) ký tự đầu vào$", r"Completed · \1 input characters"),
