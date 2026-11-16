@@ -1327,7 +1327,7 @@ class MainWindow(QMainWindow):
         if self.isVisible() and not self.isMinimized():
             return
         self.tray_icon.showMessage(
-            APP_NAME, f"{title}: {message}",
+            APP_NAME, f"{translate_text(title)}: {translate_text(message)}",
             QSystemTrayIcon.MessageIcon.Information, 5000
         )
 
@@ -1396,6 +1396,7 @@ class MainWindow(QMainWindow):
         self.quality_slider.setValue(max(50, min(100, quality)))
 
     def open_preferences(self):
+        previous_language = get_language()
         dialog = PreferencesDialog(self.settings, self, tray_available=self.tray_icon is not None)
         if dialog.exec() == QDialog.DialogCode.Accepted:
             dialog.save_to_settings()
@@ -1404,6 +1405,18 @@ class MainWindow(QMainWindow):
             ):
                 self.settings.remove("operations")
             self.settings.sync()
+            selected_language = str(
+                self.settings.value("preferences/language", "vi") or "vi"
+            )
+            set_language(selected_language)
+            if selected_language != previous_language:
+                self.on_mode_changed(self.tabs.currentIndex())
+                translate_object_tree(self)
+                QMessageBox.information(
+                    self,
+                    translate_text("Ngôn ngữ"),
+                    translate_text("Ngôn ngữ đã được cập nhật."),
+                )
 
     def open_settings_folder(self):
         folder = Path(self.settings.fileName()).expanduser().parent
@@ -1416,12 +1429,16 @@ class MainWindow(QMainWindow):
             )
 
     def show_about(self):
+        version_label = "Version" if get_language() == "en" else "Phiên bản"
+        license_label = "MIT License" if get_language() == "en" else "Giấy phép MIT"
         QMessageBox.about(
             self,
-            "Giới thiệu FileForge",
+            translate_text("Giới thiệu FileForge"),
             "<h3>FileForge</h3>"
-            "<p>Công cụ desktop hỗ trợ xử lý tệp, dữ liệu văn bản và mã hóa.</p>"
-            "<p>File được xử lý trực tiếp trên máy tính của bạn.</p>",
+            f"<p><b>{version_label} {APP_VERSION}</b></p>"
+            + translate_text("<p>Công cụ desktop hỗ trợ xử lý tệp, dữ liệu văn bản và mã hóa.</p>")
+            + translate_text("<p>File được xử lý trực tiếp trên máy tính của bạn.</p>")
+            + f"<p>{license_label}</p>",
         )
 
     def _remember_last_directory(self, key: str, path: str | Path):
@@ -3324,7 +3341,7 @@ class MainWindow(QMainWindow):
             total_size += size
 
         self.queue_summary.setText(
-            f"{len(valid_paths)} tệp  ·  {self.format_size(total_size)}"
+            translate_text(f"{len(valid_paths)} tệp  ·  {self.format_size(total_size)}")
         )
         self.queue_stack.setCurrentIndex(1 if valid_paths else 0)
         self.update_controls()
@@ -3491,20 +3508,20 @@ class MainWindow(QMainWindow):
             prefix = "Đang giải nén"
         else:
             prefix = "Đang chuyển đổi"
-        self.progress_text.setText(f"{prefix}: {name}")
+        self.progress_text.setText(translate_text(f"{prefix}: {name}"))
 
     def show_result(self, title: str, message: str, folder: str, details: str = ""):
         if not self.isVisible() or self.isMinimized():
             return
         dialog = QMessageBox(self)
-        dialog.setWindowTitle(title)
-        dialog.setText(message)
+        dialog.setWindowTitle(translate_text(title))
+        dialog.setText(translate_text(message))
         if details:
             dialog.setDetailedText(details)
         open_folder_btn = dialog.addButton(
-            "Mở thư mục", QMessageBox.ButtonRole.ActionRole
+            translate_text("Mở thư mục"), QMessageBox.ButtonRole.ActionRole
         )
-        dialog.addButton("Đóng", QMessageBox.ButtonRole.AcceptRole)
+        dialog.addButton(translate_text("Đóng"), QMessageBox.ButtonRole.AcceptRole)
         dialog.exec()
         if dialog.clickedButton() == open_folder_btn:
             QDesktopServices.openUrl(QUrl.fromLocalFile(folder))
@@ -3820,6 +3837,9 @@ def main():
     app.setOrganizationDomain("github.com/johanforce")
     app.setApplicationName(APP_NAME)
     app.setApplicationDisplayName(APP_NAME)
+    app.setApplicationVersion(APP_VERSION)
+    startup_settings = QSettings("JohanForce", APP_NAME)
+    set_language(str(startup_settings.value("preferences/language", "vi") or "vi"))
     app_logger = configure_app_logging()
     install_exception_logging(app_logger)
     app_logger.info("FileForge starting")
@@ -3830,11 +3850,11 @@ def main():
 
     splash = SplashScreen()
     splash.show_animated()
-    splash.set_progress(14, "Đang khởi động…")
+    splash.set_progress(14, translate_text("Đang khởi động…"))
     launch: dict = {}
 
     def build_window():
-        splash.set_progress(46, "Đang dựng giao diện…")
+        splash.set_progress(46, translate_text("Đang dựng giao diện…"))
         app.processEvents()
         try:
             launch["window"] = MainWindow()
@@ -3845,11 +3865,11 @@ def main():
             )
             app.quit()
             return
-        splash.set_progress(88, "Gần xong…")
+        splash.set_progress(88, translate_text("Gần xong…"))
         QTimer.singleShot(max(0, SPLASH_MIN_MS - splash.elapsed_ms()), finish_splash)
 
     def finish_splash():
-        splash.set_progress(100, "Sẵn sàng")
+        splash.set_progress(100, translate_text("Sẵn sàng"))
         QTimer.singleShot(420, reveal_window)
 
     def reveal_window():
