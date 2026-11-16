@@ -54,11 +54,15 @@ class I18nTests(unittest.TestCase):
         self.assertEqual(translate_text("3 tệp  ·  1.5 MB"), "3 files  ·  1.5 MB")
         self.assertEqual(translate_text("2.5 giây"), "2.5 seconds")
         self.assertEqual(translate_text("4 tác vụ gần đây"), "4 recent task(s)")
+        self.assertEqual(translate_text("Hoàn tất 2/3 mục"), "Completed 2/3 item(s)")
+        self.assertEqual(translate_text("Đã giữ lại 2 kết quả hoàn tất"), "Kept 2 completed result(s)")
 
         set_language("vi")
         self.assertEqual(translate_text("3 files  ·  1.5 MB"), "3 tệp  ·  1.5 MB")
         self.assertEqual(translate_text("2.5 seconds"), "2.5 giây")
         self.assertEqual(translate_text("4 recent task(s)"), "4 tác vụ gần đây")
+        self.assertEqual(translate_text("Completed 2/3 item(s)"), "Hoàn tất 2/3 mục")
+        self.assertEqual(translate_text("Kept 2 completed result(s)"), "Đã giữ lại 2 kết quả hoàn tất")
 
     def test_unsupported_language_falls_back_to_vietnamese(self):
         set_language("fr")
