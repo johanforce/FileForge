@@ -104,7 +104,7 @@ def _prepare_plaintext(data: bytes, mode: str, padding_name: str) -> bytes:
         padder = padding.PKCS7(algorithms.AES.block_size).padder()
         return padder.update(data) + padder.finalize()
     if padding_name == "NoPadding":
-        if len(data) % algorithms.AES.block_size:
+        if len(data) % (algorithms.AES.block_size // 8):
             raise ValueError("NoPadding yêu cầu plaintext có độ dài bội số 16 byte.")
         return data
     raise ValueError("Padding không được hỗ trợ.")
