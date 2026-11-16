@@ -77,5 +77,64 @@ class CryptoUtilsTests(unittest.TestCase):
                     aes_encrypt("data", key, mode=mode, iv=iv, padding_name="PKCS5Padding")
 
 
+    def test_nist_aes_zero_block_vectors(self):
+        # AES-128 with an all-zero key and block. For CBC/CTR, use an
+        # all-zero IV/counter so the first output block equals AES_K(0^128).
+        key = "00" * 16
+        plaintext = "\\x00" * 16
+        expected_block = "66e94bd4ef8a2c3b884cfa59ca342b2e"
+
+        for mode in ("ECB", "CBC", "CTR"):
+            with self.subTest(mode=mode):
+                iv = "" if mode == "ECB" else "00" * 16
+                encrypted, _ = aes_encrypt(
+                    plaintext, key, "HEX", mode, iv, "HEX", "HEX", "NoPadding"
+                )
+                self.assertEqual(encrypted, expected_block)
+
+    def test_nist_aes_gcm_known_answer_vector(self):
+        # NIST SP 800-38D test case: 128-bit zero key, 96-bit zero nonce,
+        # one 128-bit zero plaintext block. AESGCM output is ciphertext||tag.
+        key = "00" * 16
+        iv = "00" * 12
+        plaintext = "\\x00" * 16
+        expected = (
+            "0388dace60b6a392f328c2b971b2fe78"
+            "ab6e47d42cec13bdf53a67b21257bddf"
+        )
+        encrypted, used_iv = aes_encrypt(
+            plaintext, key, "HEX", "GCM", iv, "HEX", "HEX", "NoPadding"
+        )
+        self.assertEqual(encrypted, expected)
+        self.assertEqual(used_iv, iv)
+
+    def test_utf8_whitespace_iv_is_not_treated_as_missing(self):
+        key = generate_aes_key(128, "BASE-64")
+        iv = " " * 16
+        encrypted, used_iv = aes_encrypt(
+            "whitespace IV", key, "BASE-64", "CBC", iv, "Base64", "UTF-8",
+            "PKCS5Padding",
+        )
+        self.assertEqual(used_iv, iv)
+        self.assertEqual(
+            aes_decrypt(
+                encrypted, key, "BASE-64", "CBC", iv, "Base64", "UTF-8",
+                "PKCS5Padding", "UTF-8",
+            ),
+            "whitespace IV",
+        )
+
+    def test_decrypt_rejects_padding_not_supported_by_ctr(self):
+        key = generate_aes_key(128, "BASE-64")
+        iv = generate_iv("CTR", "HEX")
+        encrypted, _ = aes_encrypt(
+            "test", key, mode="CTR", iv=iv, padding_name="NoPadding"
+        )
+        with self.assertRaisesRegex(ValueError, "chỉ hỗ trợ NoPadding"):
+            aes_decrypt(
+                encrypted, key, mode="CTR", iv=iv, padding_name="PKCS5Padding"
+            )
+
+
 if __name__ == "__main__":
     unittest.main()
