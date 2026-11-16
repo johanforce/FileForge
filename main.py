@@ -1235,7 +1235,7 @@ class MainWindow(QMainWindow):
         app_menu.addSeparator()
         quit_action = QAction("Thoát", self)
         quit_action.setShortcut(QKeySequence("Ctrl+Q"))
-        quit_action.triggered.connect(self.close)
+        quit_action.triggered.connect(self.quit_application)
         app_menu.addAction(quit_action)
 
         help_menu = self.menuBar().addMenu("Trợ giúp")
@@ -1267,7 +1267,7 @@ class MainWindow(QMainWindow):
         tray_menu.addAction(history_action)
         tray_menu.addSeparator()
         exit_action = QAction("Thoát FileForge", self)
-        exit_action.triggered.connect(self.quit_from_tray)
+        exit_action.triggered.connect(self.quit_application)
         tray_menu.addAction(exit_action)
         self.tray_icon.setContextMenu(tray_menu)
         self.tray_icon.activated.connect(self._on_tray_activated)
@@ -1285,11 +1285,15 @@ class MainWindow(QMainWindow):
         self.raise_()
         self.activateWindow()
 
-    def quit_from_tray(self):
+    def quit_application(self):
         self._force_quit = True
         self.close()
         if self.isVisible():
+            # closeEvent may reject the request while a worker is still active.
             self._force_quit = False
+
+    def quit_from_tray(self):
+        self.quit_application()
 
     def _notify_user(self, title: str, message: str):
         if not self.settings.value("preferences/show_notifications", True, type=bool):
