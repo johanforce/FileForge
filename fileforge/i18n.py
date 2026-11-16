@@ -254,7 +254,9 @@ ENGLISH = {
     "Lưu tệp ZIP": "Save ZIP file",
     "Chọn nơi giải nén": "Choose extraction folder",
     "Chọn thư mục lưu ảnh": "Choose image output folder",
+    "Nén ZIP": "Create ZIP",
     "Giải nén ZIP": "Extract ZIP",
+    "Chuyển ảnh sang {output_format}": "Convert images to {output_format}",
     "Đang nén": "Creating ZIP",
     "Đang giải nén": "Extracting",
     "Đang chuyển đổi": "Converting",
@@ -286,6 +288,24 @@ ENGLISH = {
     "Ngôn ngữ đã được cập nhật.": "The language has been updated.",
     "Chọn ngôn ngữ giao diện.": "Choose the interface language.",
     "Phiên bản": "Version",
+    "Thời gian": "Time",
+    "Tác vụ": "Task",
+    "Trạng thái": "Status",
+    "Số mục": "Items",
+    "Thời lượng": "Duration",
+    "Kết quả": "Result",
+    "Lịch sử tác vụ – FileForge": "Task History – FileForge",
+    "Tìm theo tác vụ, tên tệp hoặc trạng thái…": "Search by task, file name, or status…",
+    "Mở thư mục kết quả": "Open output folder",
+    "Chi tiết": "Details",
+    "Xóa lịch sử": "Clear history",
+    "Thành công": "Success",
+    "Một phần": "Partial",
+    "Thất bại": "Failed",
+    "Đã hủy": "Cancelled",
+    "Thành công": "Success",
+    "Xóa toàn bộ lịch sử tác vụ trên máy này? Thao tác này không xóa các tệp kết quả.": "Clear all task history on this computer? This will not delete output files.",
+    "Giấy phép": "License",
     "Giấy phép": "License",
     "Giới thiệu": "About",
 }
@@ -318,6 +338,27 @@ def translate_text(value: Any) -> Any:
 def _translate_dynamic(value: str) -> str:
     """Translate common status strings that contain runtime values."""
     if _current_language == "vi":
+        reversed_patterns = (
+            (r"^(\\d[\\d,]*) files  ·  (.+)$", r"\\1 tệp  ·  \\2"),
+            (r"^([\\d,]+) characters$", r"\\1 ký tự"),
+            (r"^Completed · ([\\d,]+) input characters$", r"Hoàn tất · \\1 ký tự đầu vào"),
+            (r"^([\\d,]+) input characters → ([\\d,]+) output characters$", r"\\1 ký tự đầu vào → \\2 ký tự đầu ra"),
+            (r"^([\\d,]+) → ([\\d,]+) characters$", r"\\1 → \\2 ký tự"),
+            (r"^Created (.+)$", r"Đã tạo \\1"),
+            (r"^Loaded (.+)$", r"Đã nạp \\1"),
+            (r"^Creating ZIP: (.+)$", r"Đang nén: \\1"),
+            (r"^Extracting: (.+)$", r"Đang giải nén: \\1"),
+            (r"^Converting: (.+)$", r"Đang chuyển đổi: \\1"),
+            (r"^Error: (.+)$", r"Lỗi: \\1"),
+            (r"^Could not encode: (.+)$", r"Không thể encode: \\1"),
+            (r"^Could not decode: (.+)$", r"Không thể decode: \\1"),
+            (r"^Recognized (.+)$", r"Đã nhận diện \\1"),
+            (r"^(\\d+) recent task\\(s\\)$", r"\\1 tác vụ gần đây"),
+            (r"^(\\d+)/(\\d+) task\\(s\\)$", r"\\1/\\2 tác vụ"),
+        )
+        for pattern, replacement in reversed_patterns:
+            if re.match(pattern, value):
+                return re.sub(pattern, replacement, value)
         return _REVERSE.get(value, value)
     patterns = (
         (r"^(\d[\d,]*) tệp  ·  (.+)$", r"\1 files  ·  \2"),
