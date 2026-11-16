@@ -5,6 +5,7 @@ import difflib
 import html
 import re
 import sys
+import time
 import traceback
 from pathlib import Path
 
@@ -51,6 +52,8 @@ from PySide6.QtWidgets import (
     QApplication,
     QAbstractItemView,
     QDialog,
+    QMenu,
+    QSystemTrayIcon,
     QComboBox,
     QCheckBox,
     QFileDialog,
@@ -93,6 +96,11 @@ from fileforge.crypto_utils import (
     aes_decrypt, aes_encrypt, generate_aes_key, generate_iv, url_decode, url_encode,
 )
 from fileforge.preferences import PreferencesDialog
+from fileforge.app_services import (
+    TaskHistoryStore, app_data_directory, configure_app_logging,
+    install_exception_logging,
+)
+from fileforge.history_dialog import TaskHistoryDialog
 
 
 # --------------------------------------------------------------------------
@@ -960,6 +968,12 @@ class MainWindow(QMainWindow):
         self.setWindowIcon(load_app_icon())
         self.settings = QSettings("JohanForce", APP_NAME)
         self.settings.setFallbacksEnabled(False)
+        self.app_data_dir = app_data_directory()
+        self.logger = configure_app_logging(self.app_data_dir)
+        self.history_store = TaskHistoryStore(self.app_data_dir / "history.sqlite3")
+        self._task_context: dict | None = None
+        self._force_quit = False
+        self.tray_icon: QSystemTrayIcon | None = None
         self.resize(1040, 740)
         self.setMinimumSize(860, 620)
         if self.settings.value("preferences/restore_session", True, type=bool):
@@ -1187,6 +1201,8 @@ class MainWindow(QMainWindow):
 
         self._restore_saved_options()
         self._build_menu_bar()
+        self._setup_system_tray()
+        self.logger.info("FileForge main window initialized")
         if self.settings.value("preferences/restore_session", True, type=bool):
             saved_tab = self.settings.value("window/last_tab", 0, type=int)
             if 0 <= saved_tab < self.tabs.count():
@@ -1202,9 +1218,18 @@ class MainWindow(QMainWindow):
         preferences_action.triggered.connect(self.open_preferences)
         app_menu.addAction(preferences_action)
 
+        history_action = QAction("Lịch sử tác vụ…", self)
+        history_action.setShortcut(QKeySequence("Ctrl+H"))
+        history_action.triggered.connect(self.open_task_history)
+        app_menu.addAction(history_action)
+
         config_action = QAction("Mở thư mục cấu hình", self)
         config_action.triggered.connect(self.open_settings_folder)
         app_menu.addAction(config_action)
+
+        logs_action = QAction("Mở thư mục nhật ký", self)
+        logs_action.triggered.connect(self.open_logs_folder)
+        app_menu.addAction(logs_action)
 
         app_menu.addSeparator()
         quit_action = QAction("Thoát", self)
@@ -1216,6 +1241,87 @@ class MainWindow(QMainWindow):
         about_action = QAction("Giới thiệu FileForge", self)
         about_action.triggered.connect(self.show_about)
         help_menu.addAction(about_action)
+
+    def open_task_history(self):
+        dialog = TaskHistoryDialog(self.history_store, self)
+        dialog.exec()
+
+    def open_logs_folder(self):
+        folder = self.app_data_dir / "logs"
+        folder.mkdir(parents=True, exist_ok=True)
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
+
+    def _setup_system_tray(self):
+        if not QSystemTrayIcon.isSystemTrayAvailable():
+            self.logger.info("System tray is not available on this desktop session")
+            return
+        self.tray_icon = QSystemTrayIcon(load_app_icon(), self)
+        self.tray_icon.setToolTip(APP_NAME)
+        tray_menu = QMenu(self)
+        show_action = QAction("Mở FileForge", self)
+        show_action.triggered.connect(self.restore_from_tray)
+        tray_menu.addAction(show_action)
+        history_action = QAction("Lịch sử tác vụ", self)
+        history_action.triggered.connect(self.open_task_history)
+        tray_menu.addAction(history_action)
+        tray_menu.addSeparator()
+        exit_action = QAction("Thoát FileForge", self)
+        exit_action.triggered.connect(self.quit_from_tray)
+        tray_menu.addAction(exit_action)
+        self.tray_icon.setContextMenu(tray_menu)
+        self.tray_icon.activated.connect(self._on_tray_activated)
+        self.tray_icon.show()
+
+    def _on_tray_activated(self, reason):
+        if reason in (
+            QSystemTrayIcon.ActivationReason.Trigger,
+            QSystemTrayIcon.ActivationReason.DoubleClick,
+        ):
+            self.restore_from_tray()
+
+    def restore_from_tray(self):
+        self.showNormal()
+        self.raise_()
+        self.activateWindow()
+
+    def quit_from_tray(self):
+        self._force_quit = True
+        self.close()
+        if self.isVisible():
+            self._force_quit = False
+
+    def _notify_user(self, title: str, message: str):
+        if not self.settings.value("preferences/show_notifications", True, type=bool):
+            return
+        if self.tray_icon is None or not self.tray_icon.isVisible():
+            return
+        if self.isVisible() and not self.isMinimized():
+            return
+        self.tray_icon.showMessage(
+            APP_NAME, f"{title}: {message}",
+            QSystemTrayIcon.MessageIcon.Information, 5000
+        )
+
+    def _record_task_history(self, status: str, outputs=None, summary: str = "", error_message: str = ""):
+        context = self._task_context
+        if not context:
+            return
+        duration_ms = int((time.perf_counter() - context["started_at"]) * 1000)
+        try:
+            self.history_store.record(
+                operation=context["operation"], status=status,
+                inputs=context["inputs"], outputs=outputs or [],
+                output_folder=context["output_folder"], duration_ms=duration_ms,
+                summary=summary, error_message=error_message,
+            )
+            self.logger.info(
+                "Task finished: operation=%s status=%s inputs=%d duration_ms=%d",
+                context["operation"], status, len(context["inputs"]), duration_ms,
+            )
+        except Exception:
+            self.logger.exception("Could not write task history")
+        finally:
+            self._task_context = None
 
     def _restore_saved_options(self):
         if not self.settings.value(
@@ -1235,7 +1341,7 @@ class MainWindow(QMainWindow):
         self.quality_slider.setValue(max(50, min(100, quality)))
 
     def open_preferences(self):
-        dialog = PreferencesDialog(self.settings, self)
+        dialog = PreferencesDialog(self.settings, self, tray_available=self.tray_icon is not None)
         if dialog.exec() == QDialog.DialogCode.Accepted:
             dialog.save_to_settings()
             if not self.settings.value(
