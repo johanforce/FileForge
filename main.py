@@ -17,6 +17,7 @@ from PySide6.QtCore import (
     QPoint,
     QPointF,
     QPropertyAnimation,
+    QSettings,
     QRectF,
     QSize,
     Qt,
@@ -27,6 +28,7 @@ from PySide6.QtCore import (
     Signal,
 )
 from PySide6.QtGui import (
+    QAction,
     QBrush,
     QColor,
     QDesktopServices,
@@ -48,6 +50,7 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import (
     QApplication,
     QAbstractItemView,
+    QDialog,
     QComboBox,
     QCheckBox,
     QFileDialog,
@@ -89,6 +92,7 @@ from fileforge.curl_utils import parse_http_request
 from fileforge.crypto_utils import (
     aes_decrypt, aes_encrypt, generate_aes_key, generate_iv, url_decode, url_encode,
 )
+from fileforge.preferences import PreferencesDialog
 
 
 # --------------------------------------------------------------------------
@@ -954,8 +958,14 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("FileForge")
         self.setWindowIcon(load_app_icon())
+        self.settings = QSettings("JohanForce", APP_NAME)
+        self.settings.setFallbacksEnabled(False)
         self.resize(1040, 740)
         self.setMinimumSize(860, 620)
+        if self.settings.value("preferences/restore_session", True, type=bool):
+            saved_geometry = self.settings.value("window/geometry")
+            if saved_geometry:
+                self.restoreGeometry(saved_geometry)
 
         self.paths: list[str] = []
         self.worker: TaskWorker | None = None
@@ -1175,8 +1185,147 @@ class MainWindow(QMainWindow):
         outer.addWidget(self.aes_panel, 1)
         self.aes_panel.hide()
 
-        self.on_mode_changed(0)
+        self._restore_saved_options()
+        self._build_menu_bar()
+        if self.settings.value("preferences/restore_session", True, type=bool):
+            saved_tab = self.settings.value("window/last_tab", 0, type=int)
+            if 0 <= saved_tab < self.tabs.count():
+                self.tabs.setCurrentIndex(saved_tab)
+        self.on_mode_changed(self.tabs.currentIndex())
         self.refresh_queue()
+
+    def _build_menu_bar(self):
+        app_menu = self.menuBar().addMenu("FileForge")
+
+        preferences_action = QAction("Tùy chọn…", self)
+        preferences_action.setShortcut(QKeySequence("Ctrl+,"))
+        preferences_action.triggered.connect(self.open_preferences)
+        app_menu.addAction(preferences_action)
+
+        config_action = QAction("Mở thư mục cấu hình", self)
+        config_action.triggered.connect(self.open_settings_folder)
+        app_menu.addAction(config_action)
+
+        app_menu.addSeparator()
+        quit_action = QAction("Thoát", self)
+        quit_action.setShortcut(QKeySequence("Ctrl+Q"))
+        quit_action.triggered.connect(self.close)
+        app_menu.addAction(quit_action)
+
+        help_menu = self.menuBar().addMenu("Trợ giúp")
+        about_action = QAction("Giới thiệu FileForge", self)
+        about_action.triggered.connect(self.show_about)
+        help_menu.addAction(about_action)
+
+    def _restore_saved_options(self):
+        if not self.settings.value(
+            "preferences/remember_operation_options", True, type=bool
+        ):
+            return
+
+        compression = self.settings.value("operations/compression", "Cân bằng")
+        if compression in COMPRESSION_OPTIONS:
+            self.compression.setCurrentText(compression)
+
+        output_format = self.settings.value("operations/image_format", "JPG")
+        if output_format in {"JPG", "PNG", "WEBP"}:
+            self.format_combo.setCurrentText(output_format)
+
+        quality = self.settings.value("operations/image_quality", 90, type=int)
+        self.quality_slider.setValue(max(50, min(100, quality)))
+
+    def open_preferences(self):
+        dialog = PreferencesDialog(self.settings, self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            dialog.save_to_settings()
+            if not self.settings.value(
+                "preferences/remember_operation_options", True, type=bool
+            ):
+                self.settings.remove("operations")
+            self.settings.sync()
+
+    def open_settings_folder(self):
+        folder = Path(self.settings.fileName()).expanduser().parent
+        try:
+            folder.mkdir(parents=True, exist_ok=True)
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
+        except OSError as exc:
+            QMessageBox.warning(
+                self, "Không thể mở thư mục cấu hình", str(exc)
+            )
+
+    def show_about(self):
+        QMessageBox.about(
+            self,
+            "Giới thiệu FileForge",
+            "<h3>FileForge</h3>"
+            "<p>Công cụ desktop hỗ trợ xử lý tệp, dữ liệu văn bản và mã hóa.</p>"
+            "<p>File được xử lý trực tiếp trên máy tính của bạn.</p>",
+        )
+
+    def _remember_last_directory(self, key: str, path: str | Path):
+        if self.settings.value(
+            "preferences/remember_last_directory", True, type=bool
+        ):
+            candidate = Path(path).expanduser()
+            if candidate.is_file():
+                candidate = candidate.parent
+            if candidate.is_dir():
+                self.settings.setValue(key, str(candidate.resolve()))
+
+    def _input_start_directory(self) -> str:
+        if self.settings.value(
+            "preferences/remember_last_directory", True, type=bool
+        ):
+            saved = self.settings.value("paths/last_input_directory", "")
+            if saved and Path(saved).expanduser().is_dir():
+                return str(Path(saved).expanduser())
+        return str(Path.home())
+
+    def _output_start_directory(self) -> str:
+        candidates = [
+            self.settings.value("paths/default_output_directory", ""),
+            self.settings.value("paths/last_output_directory", ""),
+        ]
+        if not self.settings.value(
+            "preferences/remember_last_directory", True, type=bool
+        ):
+            candidates = candidates[:1]
+        for candidate in candidates:
+            if candidate and Path(candidate).expanduser().is_dir():
+                return str(Path(candidate).expanduser())
+        return str(Path.home())
+
+    def closeEvent(self, event):
+        # A running QThread must not be destroyed while the application closes.
+        if self.busy or self.text_busy:
+            QMessageBox.information(
+                self,
+                "Tác vụ đang chạy",
+                "Hãy chờ tác vụ hiện tại hoàn tất trước khi thoát FileForge.",
+            )
+            event.ignore()
+            return
+
+        if self.settings.value("preferences/restore_session", True, type=bool):
+            self.settings.setValue("window/geometry", self.saveGeometry())
+            self.settings.setValue("window/last_tab", self.tabs.currentIndex())
+
+        if self.settings.value(
+            "preferences/remember_operation_options", True, type=bool
+        ):
+            self.settings.setValue(
+                "operations/compression", self.compression.currentText()
+            )
+            self.settings.setValue(
+                "operations/image_format", self.format_combo.currentText()
+            )
+            self.settings.setValue(
+                "operations/image_quality", self.quality_slider.value()
+            )
+
+        self.settings.sync()
+        super().closeEvent(event)
 
     def _build_text_pane(self, title: str, placeholder: str, read_only: bool):
         pane = QFrame()
@@ -2914,16 +3063,18 @@ class MainWindow(QMainWindow):
             title = "Chọn tệp"
 
         files, _ = QFileDialog.getOpenFileNames(
-            self, title, str(Path.home()), file_filter
+            self, title, self._input_start_directory(), file_filter
         )
         if files:
+            self._remember_last_directory("paths/last_input_directory", Path(files[0]).parent)
             self.add_paths(files)
 
     def choose_folder(self):
         folder = QFileDialog.getExistingDirectory(
-            self, "Chọn thư mục", str(Path.home())
+            self, "Chọn thư mục", self._input_start_directory()
         )
         if folder:
+            self._remember_last_directory("paths/last_input_directory", folder)
             self.add_paths([folder])
 
     def refresh_queue(self):
@@ -3020,7 +3171,7 @@ class MainWindow(QMainWindow):
             destination, _ = QFileDialog.getSaveFileName(
                 self,
                 "Lưu tệp ZIP",
-                str(Path.home() / "FileForge.zip"),
+                str(Path(self._output_start_directory()) / "FileForge.zip"),
                 ZIP_FILTER,
             )
             if not destination:
@@ -3030,17 +3181,20 @@ class MainWindow(QMainWindow):
             compression = COMPRESSION_OPTIONS[self.compression.currentText()]
         elif self.mode == "extract":
             destination = QFileDialog.getExistingDirectory(
-                self, "Chọn nơi giải nén", str(Path.home())
+                self, "Chọn nơi giải nén", self._output_start_directory()
             )
             if not destination:
                 return
         else:
             destination = QFileDialog.getExistingDirectory(
-                self, "Chọn thư mục lưu ảnh", str(Path.home())
+                self, "Chọn thư mục lưu ảnh", self._output_start_directory()
             )
             if not destination:
                 return
             output_format = self.format_combo.currentText()
+
+        output_location = Path(destination).parent if self.mode == "zip" else Path(destination)
+        self._remember_last_directory("paths/last_output_directory", output_location)
 
         self.set_busy(True)
         self.progress_area.show()
