@@ -23,18 +23,24 @@ class PreferencesDialogTests(unittest.TestCase):
             settings.setValue("preferences/restore_session", False)
             settings.setValue("preferences/remember_last_directory", True)
             settings.setValue("preferences/remember_operation_options", False)
+            settings.setValue("preferences/minimize_to_tray", True)
+            settings.setValue("preferences/show_notifications", False)
 
             output_dir = Path(temp_dir) / "output"
             output_dir.mkdir()
 
-            dialog = PreferencesDialog(settings)
+            dialog = PreferencesDialog(settings, tray_available=True)
             self.assertFalse(dialog.restore_session.isChecked())
             self.assertTrue(dialog.remember_last_directory.isChecked())
             self.assertFalse(dialog.remember_operation_options.isChecked())
+            self.assertTrue(dialog.minimize_to_tray.isChecked())
+            self.assertFalse(dialog.show_notifications.isChecked())
 
             dialog.restore_session.setChecked(True)
             dialog.remember_last_directory.setChecked(False)
             dialog.remember_operation_options.setChecked(True)
+            dialog.minimize_to_tray.setChecked(False)
+            dialog.show_notifications.setChecked(True)
             dialog.output_directory.setText(str(output_dir))
             self.assertTrue(dialog.is_output_directory_valid())
             dialog.save_to_settings()
@@ -49,6 +55,18 @@ class PreferencesDialogTests(unittest.TestCase):
             self.assertEqual(
                 settings.value("paths/default_output_directory"), str(output_dir)
             )
+            self.assertFalse(settings.value("preferences/minimize_to_tray", type=bool))
+            self.assertTrue(settings.value("preferences/show_notifications", type=bool))
+            dialog.close()
+
+    def test_tray_options_are_disabled_without_system_tray(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            settings = QSettings(
+                str(Path(temp_dir) / "settings.ini"), QSettings.Format.IniFormat
+            )
+            dialog = PreferencesDialog(settings, tray_available=False)
+            self.assertFalse(dialog.minimize_to_tray.isEnabled())
+            self.assertFalse(dialog.show_notifications.isEnabled())
             dialog.close()
 
     def test_invalid_output_directory_fails_validation(self):
