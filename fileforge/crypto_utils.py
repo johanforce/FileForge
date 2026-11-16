@@ -13,9 +13,6 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 
-_FORMATS = {"UTF-8", "HEX", "BASE-64"}
-
-
 def url_encode(value: str, component: bool = False) -> str:
     """Encode UTF-8 text using RFC 3986 URL or component semantics."""
     safe = "-_.~" if component else ":/?#[]@!$&'()*+,;=%"
@@ -86,10 +83,22 @@ def _validate_key(key: str, key_format: str) -> bytes:
     return key_bytes
 
 
-def _prepare_plaintext(data: bytes, mode: str, padding_name: str) -> bytes:
+def _validate_padding(mode: str, padding_name: str) -> None:
+    """Reject padding choices that do not match the selected AES mode."""
     if mode in ("GCM", "CTR"):
         if padding_name != "NoPadding":
             raise ValueError(f"AES-{mode} chỉ hỗ trợ NoPadding.")
+        return
+    if mode in ("CBC", "ECB"):
+        if padding_name not in ("NoPadding", "PKCS5Padding"):
+            raise ValueError("Padding phải là NoPadding hoặc PKCS5Padding.")
+        return
+    raise ValueError("Cipher mode không được hỗ trợ.")
+
+
+def _prepare_plaintext(data: bytes, mode: str, padding_name: str) -> bytes:
+    _validate_padding(mode, padding_name)
+    if mode in ("GCM", "CTR"):
         return data
     if padding_name == "PKCS5Padding":
         padder = padding.PKCS7(algorithms.AES.block_size).padder()
@@ -102,6 +111,7 @@ def _prepare_plaintext(data: bytes, mode: str, padding_name: str) -> bytes:
 
 
 def _remove_padding(data: bytes, mode: str, padding_name: str) -> bytes:
+    _validate_padding(mode, padding_name)
     if mode in ("GCM", "CTR") or padding_name == "NoPadding":
         return data
     if padding_name == "PKCS5Padding":
@@ -135,11 +145,14 @@ def aes_encrypt(plaintext: str, key: str, key_format: str = "BASE-64",
     if normalized_mode not in ("CBC", "GCM", "CTR", "ECB"):
         raise ValueError("Cipher mode phải là CBC, GCM, CTR hoặc ECB.")
 
+    _validate_padding(normalized_mode, padding_name)
     if normalized_mode == "ECB":
         iv_bytes = b""
         used_iv = ""
     else:
-        iv_bytes = _decode_bytes(iv, iv_format, "IV") if iv.strip() else secrets.token_bytes(
+        # Only an actually empty string requests a generated IV. Whitespace can
+        # be valid key material when the selected representation is UTF-8.
+        iv_bytes = _decode_bytes(iv, iv_format, "IV") if iv != "" else secrets.token_bytes(
             12 if normalized_mode == "GCM" else 16
         )
         used_iv = _encode_bytes(iv_bytes, iv_format)
@@ -168,10 +181,11 @@ def aes_decrypt(ciphertext: str, key: str, key_format: str = "BASE-64",
     normalized_mode = mode.upper()
     if normalized_mode not in ("CBC", "GCM", "CTR", "ECB"):
         raise ValueError("Cipher mode phải là CBC, GCM, CTR hoặc ECB.")
+    _validate_padding(normalized_mode, padding_name)
     if normalized_mode == "ECB":
         iv_bytes = b""
     else:
-        if not iv.strip():
+        if iv == "":
             raise ValueError("Cần nhập IV để giải mã.")
         iv_bytes = _decode_bytes(iv, iv_format, "IV")
 
