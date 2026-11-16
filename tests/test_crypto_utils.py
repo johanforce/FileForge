@@ -52,6 +52,19 @@ class CryptoUtilsTests(unittest.TestCase):
                 )
                 self.assertEqual(base64.b64decode(decoded), b"format test")
 
+
+    def test_generated_aes_key_sizes_in_all_formats(self):
+        for bits in (128, 192, 256):
+            for key_format in ("UTF-8", "HEX", "BASE-64"):
+                with self.subTest(bits=bits, key_format=key_format):
+                    key = generate_aes_key(bits, key_format)
+                    encrypted, _ = aes_encrypt(
+                        "size test", key, key_format, "GCM",
+                        generate_iv("GCM", "HEX"), "BASE-64", "HEX", "NoPadding",
+                    )
+                    self.assertTrue(encrypted)
+
+
     def test_aes_gcm_authentication_rejects_tampering(self):
         key = generate_aes_key(256, "BASE-64")
         iv = generate_iv("GCM", "HEX")
