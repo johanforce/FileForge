@@ -59,6 +59,7 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QProgressBar,
+    QScrollArea,
     QPushButton,
     QSlider,
     QStackedWidget,
@@ -860,6 +861,93 @@ class CodeSyntaxHighlighter(QSyntaxHighlighter):
                 self.setFormat(match.start(), match.end() - match.start(), fmt)
 
 
+class ScrollableTabWidget(QWidget):
+    """Compact tab strip that scrolls horizontally without navigation arrows."""
+
+    currentChanged = Signal(int)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+
+        self.scroll_area = QScrollArea()
+        self.scroll_area.setObjectName("ScrollableTabArea")
+        self.scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+        self.scroll_area.setWidgetResizable(False)
+        self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.scroll_area.setStyleSheet("QScrollArea#ScrollableTabArea { background: transparent; border: 0; }")
+
+        self.tab_bar = QTabBar()
+        self.tab_bar.setExpanding(False)
+        self.tab_bar.setUsesScrollButtons(False)
+        self.tab_bar.setElideMode(Qt.TextElideMode.ElideNone)
+        self.tab_bar.setDrawBase(False)
+        self.tab_bar.setStyleSheet("""
+            QTabBar::tab {
+                background: transparent; color: #5f6368;
+                padding: 10px 15px; margin-right: 4px;
+                border-bottom: 2px solid transparent; font-weight: 650;
+            }
+            QTabBar::tab:selected { color: #1a73e8; border-bottom: 2px solid #1a73e8; }
+            QTabBar::tab:hover { color: #174ea6; }
+        """)
+        self.tab_bar.currentChanged.connect(self.currentChanged.emit)
+        self.tab_bar.installEventFilter(self)
+        self.scroll_area.setWidget(self.tab_bar)
+        layout.addWidget(self.scroll_area)
+        self._sync_tab_bar_size()
+
+    def addTab(self, widget, label: str) -> int:
+        index = self.tab_bar.addTab(label)
+        self._sync_tab_bar_size()
+        return index
+
+    def count(self) -> int:
+        return self.tab_bar.count()
+
+    def currentIndex(self) -> int:
+        return self.tab_bar.currentIndex()
+
+    def setCurrentIndex(self, index: int):
+        self.tab_bar.setCurrentIndex(index)
+        self.ensure_current_tab_visible()
+
+    def _sync_tab_bar_size(self):
+        width = sum(self.tab_bar.tabSizeHint(i).width() for i in range(self.tab_bar.count()))
+        height = max(42, self.tab_bar.sizeHint().height())
+        self.tab_bar.setFixedSize(max(1, width + 4), height)
+        self.scroll_area.setFixedHeight(height)
+        self.ensure_current_tab_visible()
+
+    def ensure_current_tab_visible(self):
+        index = self.tab_bar.currentIndex()
+        if index < 0:
+            return
+        rect = self.tab_bar.tabRect(index)
+        bar = self.scroll_area.horizontalScrollBar()
+        left, right = bar.value(), bar.value() + self.scroll_area.viewport().width()
+        if rect.left() < left:
+            bar.setValue(rect.left())
+        elif rect.right() > right:
+            bar.setValue(rect.right() - self.scroll_area.viewport().width())
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.ensure_current_tab_visible()
+
+    def eventFilter(self, watched, event):
+        if watched is self.tab_bar and event.type() == QEvent.Type.Wheel:
+            delta = event.angleDelta().x() or event.angleDelta().y()
+            if delta:
+                bar = self.scroll_area.horizontalScrollBar()
+                bar.setValue(bar.value() - delta)
+                return True
+        return super().eventFilter(watched, event)
+
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -916,15 +1004,15 @@ class MainWindow(QMainWindow):
         header.addWidget(self.add_folder_btn)
         outer.addLayout(header)
 
-        self.tabs = QTabWidget()
-        self.tabs.addTab(QWidget(), "Nén ZIP")
-        self.tabs.addTab(QWidget(), "Giải nén")
+        self.tabs = ScrollableTabWidget()
         self.tabs.addTab(QWidget(), "Chuyển ảnh")
         self.tabs.addTab(QWidget(), "JSON / XML")
         self.tabs.addTab(QWidget(), "So sánh")
         self.tabs.addTab(QWidget(), "String → cURL")
         self.tabs.addTab(QWidget(), "URL Encoder / Decoder")
         self.tabs.addTab(QWidget(), "AES Encrypt / Decrypt")
+        self.tabs.addTab(QWidget(), "Giải nén")
+        self.tabs.addTab(QWidget(), "Nén ZIP")
         self.tabs.currentChanged.connect(self.on_mode_changed)
         outer.addWidget(self.tabs)
 
@@ -2586,15 +2674,17 @@ class MainWindow(QMainWindow):
         self.aes_panel.setVisible(tool == "aes")
 
     def on_mode_changed(self, index: int):
-        if index == 6:
+        if index == 4:
             self._show_tool_panel("url")
             return
-        if index == 7:
+        if index == 5:
             self._show_tool_panel("aes")
             return
+
         self.url_panel.hide()
         self.aes_panel.hide()
-        if index == 3:
+
+        if index == 1:
             self.mode = "text"
             self.curl_panel.hide()
             self.add_files_btn.hide()
@@ -2606,7 +2696,7 @@ class MainWindow(QMainWindow):
             self.text_panel.show()
             return
 
-        if index == 4:
+        if index == 2:
             self.mode = "compare"
             self.curl_panel.hide()
             self.add_files_btn.hide()
@@ -2618,7 +2708,7 @@ class MainWindow(QMainWindow):
             self.compare_panel.show()
             return
 
-        if index == 5:
+        if index == 3:
             self.mode = "curl"
             self.add_files_btn.hide()
             self.add_folder_btn.hide()
@@ -2638,7 +2728,9 @@ class MainWindow(QMainWindow):
         self.drop_area.show()
         self.queue_panel.show()
         self.action_panel.show()
-        self.mode = ("zip", "extract", "image")[index]
+
+        # Tab order: Image, Text, Compare, cURL, URL, AES, Extract, ZIP.
+        self.mode = {0: "image", 6: "extract", 7: "zip"}.get(index, "image")
 
         if self.mode == "zip":
             self.add_files_btn.setText("＋  Thêm tệp")
