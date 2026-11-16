@@ -168,6 +168,55 @@ def _unwrap_html_string(value: str) -> str:
     return _decode_html_escapes(raw)
 
 
+
+BLOCK_HTML_TAGS = {
+    "address", "article", "aside", "blockquote", "body", "caption", "dd",
+    "div", "dl", "dt", "fieldset", "figcaption", "figure", "footer", "form",
+    "h1", "h2", "h3", "h4", "h5", "h6", "head", "header", "hr", "html",
+    "li", "main", "nav", "ol", "p", "section", "table", "tbody", "td",
+    "tfoot", "th", "thead", "tr", "ul",
+}
+
+
+def _minify_html(value: str) -> str:
+    """Remove formatting whitespace while preserving meaningful inline and raw-text content."""
+    token_re = re.compile(
+        r"(?is)(<(script|style|pre|textarea|code)\\b[^>]*>.*?</\\2\\s*>"
+        r"|<!--.*?-->|<![^>]*>|</?[^>]+>)|([^<]+)"
+    )
+    tokens = [match.group(0) for match in token_re.finditer(value)]
+    output: list[str] = []
+
+    def tag_info(token: str):
+        match = re.match(r"</?\\s*([\\w:-]+)", token)
+        if not match:
+            return None, False
+        return match.group(1).lower(), token.startswith("</")
+
+    for index, token in enumerate(tokens):
+        if token.startswith("<"):
+            output.append(token)
+            continue
+
+        if not token:
+            continue
+        if token.isspace():
+            previous = next((item for item in reversed(tokens[:index]) if item.startswith("<")), "")
+            following = next((item for item in tokens[index + 1:] if item.startswith("<")), "")
+            prev_name, _ = tag_info(previous)
+            next_name, _ = tag_info(following)
+            if (prev_name in BLOCK_HTML_TAGS) or (next_name in BLOCK_HTML_TAGS):
+                continue
+            if previous and following:
+                output.append(" ")
+            continue
+
+        # HTML collapses ordinary text whitespace visually; retain a single separator.
+        output.append(re.sub(r"[\\t\\r\\n\\f ]+", " ", token))
+
+    return "".join(output).strip()
+
+
 def _pretty_html(value: str, indent_size: int = 2) -> str:
     """Format HTML fragments and break tags with multiple attributes onto lines."""
     token_re = re.compile(
@@ -308,11 +357,10 @@ def process_text(
         result["output"] = ET.tostring(root, encoding="unicode", short_empty_elements=True)
 
     elif operation == "html_to_string":
-        # Compact output: strip real and literal newline sequences instead of emitting \\n.
-        compact = (text.replace("\\r\\n", "").replace("\\n", "").replace("\\r", "")
-                   .replace("\r\\n", "").replace("\n", "").replace("\r", ""))
-        escaped = (compact.replace("\\", "\\\\").replace('"', '\\"')
-                   .replace("\t", "\\t"))
+        compact = _minify_html(_decode_html_escapes(text))
+        escaped = (compact.replace("\\\\", "\\\\\\\\").replace('"', '\\\\"')
+                   .replace("\\t", "\\\\t").replace("\\r", "\\\\r")
+                   .replace("\\n", "\\\\n"))
         result["output"] = f'"{escaped}"'
 
     elif operation == "string_to_html":
